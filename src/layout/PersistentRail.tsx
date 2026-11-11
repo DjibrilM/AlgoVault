@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { cn } from '@/lib/utils'
 import {
   Home as HomeSolid,
   Settings as SettingsSolid,
@@ -104,26 +105,33 @@ export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) 
             <button
               key={item.id}
               onClick={() => onNavChange(item.id)}
-              className={`group relative z-10 flex flex-col items-center justify-center gap-1.5 w-full py-1.5 rounded-xl transition-all cursor-pointer ${isActive
-                ? 'text-white'
-                : 'text-[#737373] hover:text-white'
-                }`}
+              className={cn(
+                'group relative z-10 flex flex-col items-center justify-center gap-1.5 w-full py-1.5 rounded-xl transition-all cursor-pointer',
+                {
+                  'text-white': isActive,
+                  'text-[#737373] hover:text-white': !isActive,
+                }
+              )}
             >
               {/* Icon Tile (target for sliding indicator) */}
               <div
                 ref={(el) => {
                   iconRefs.current[item.id] = el
                 }}
-                className={`p-2 rounded-xl transition-colors ${!isActive ? 'group-hover:bg-[#1F1F1F]/60 text-[#A3A3A3] group-hover:text-white' : 'text-white'
-                  }`}
+                className={cn('p-2 rounded-xl transition-colors', {
+                  'text-white': isActive,
+                  'group-hover:bg-[#1F1F1F]/60 text-[#A3A3A3] group-hover:text-white': !isActive,
+                })}
               >
                 <Icon size={22} className="transition-transform group-hover:scale-105" />
               </div>
 
               {/* Text Label */}
               <span
-                className={`text-[11px] font-medium tracking-tight transition-colors ${isActive ? 'text-white font-semibold' : 'text-[#A3A3A3]'
-                  }`}
+                className={cn('text-[11px] font-medium tracking-tight transition-colors', {
+                  'text-white font-semibold': isActive,
+                  'text-[#A3A3A3]': !isActive,
+                })}
               >
                 {item.label}
               </span>

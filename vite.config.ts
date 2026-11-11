@@ -37,6 +37,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@ui': path.resolve(__dirname, './src/components/ui'),
+      '@modules': path.resolve(__dirname, './src/modules'),
+      '@shared': path.resolve(__dirname, './src/shared'),
+      '@layout': path.resolve(__dirname, './src/layout'),
     },
+  },
+  optimizeDeps: {
+    include: ['monaco-editor'],
   },
 })
