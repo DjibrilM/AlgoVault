@@ -1,0 +1,499 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 100;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Thin.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 100;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-ThinItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-ExtraLight.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 200;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-ExtraLightItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Light.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-LightItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Italic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-MediumItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-SemiBoldItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-BoldItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-ExtraBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 800;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-ExtraBoldItalic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-Black.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: italic;
+  font-weight: 900;
+  font-display: swap;
+  src: url('./assets/fonts/Poppins/Poppins-BlackItalic.ttf') format('truetype');
+}
+
+@theme inline {
+  --font-sans: 'Poppins', sans-serif;
+  --font-heading: 'Poppins', sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* UI Design Tokens */
+  --color-ui-border-base: var(--ui-border-base);
+  --color-ui-border-base-light: var(--ui-border-base-light);
+  --color-ui-border-base-disabled: var(--ui-border-base-disabled);
+  --color-ui-border-base-white: var(--ui-border-base-white);
+  --color-ui-border-base-inverse: var(--ui-border-base-inverse);
+  --color-ui-border-brand: var(--ui-border-brand);
+  --color-ui-border-brand-light: var(--ui-border-brand-light);
+  --color-ui-border-negative: var(--ui-border-negative);
+  --color-ui-border-negative-light: var(--ui-border-negative-light);
+
+  --color-ui-bg-app: var(--ui-bg-app);
+  --color-ui-bg-card: var(--ui-bg-card);
+  --color-ui-bg-card-light: var(--ui-bg-card-light);
+  --color-ui-bg-card-inverse: var(--ui-bg-card-inverse);
+  --color-ui-bg-brand: var(--ui-bg-brand);
+  --color-ui-bg-brand-light: var(--ui-bg-brand-light);
+  --color-ui-bg-positive: var(--ui-bg-positive);
+  --color-ui-bg-positive-light: var(--ui-bg-positive-light);
+  --color-ui-bg-negative: var(--ui-bg-negative);
+  --color-ui-bg-negative-light: var(--ui-bg-negative-light);
+  --color-ui-bg-caution: var(--ui-bg-caution);
+  --color-ui-bg-caution-light: var(--ui-bg-caution-light);
+
+  --color-ui-interactive-base: var(--ui-interactive-base);
+  --color-ui-interactive-base-hover: var(--ui-interactive-base-hover);
+  --color-ui-interactive-base-active: var(--ui-interactive-base-active);
+  --color-ui-interactive-light: var(--ui-interactive-light);
+  --color-ui-interactive-light-hover: var(--ui-interactive-light-hover);
+  --color-ui-interactive-light-active: var(--ui-interactive-light-active);
+  --color-ui-interactive-brand: var(--ui-interactive-brand);
+  --color-ui-interactive-brand-hover: var(--ui-interactive-brand-hover);
+  --color-ui-interactive-brand-active: var(--ui-interactive-brand-active);
+  --color-ui-interactive-brand-disabled: var(--ui-interactive-brand-disabled);
+  --color-ui-interactive-positive: var(--ui-interactive-positive);
+  --color-ui-interactive-positive-hover: var(--ui-interactive-positive-hover);
+  --color-ui-interactive-positive-active: var(--ui-interactive-positive-active);
+  --color-ui-interactive-negative: var(--ui-interactive-negative);
+  --color-ui-interactive-negative-hover: var(--ui-interactive-negative-hover);
+  --color-ui-interactive-negative-active: var(--ui-interactive-negative-active);
+  --color-ui-interactive-caution: var(--ui-interactive-caution);
+  --color-ui-interactive-caution-hover: var(--ui-interactive-caution-hover);
+  --color-ui-interactive-caution-active: var(--ui-interactive-caution-active);
+  --color-ui-interactive-inverse: var(--ui-interactive-inverse);
+  --color-ui-interactive-inverse-hover: var(--ui-interactive-inverse-hover);
+  --color-ui-interactive-inverse-active: var(--ui-interactive-inverse-active);
+
+  --color-ui-text-primary: var(--ui-text-primary);
+  --color-ui-text-secondary: var(--ui-text-secondary);
+  --color-ui-text-tertiary: var(--ui-text-tertiary);
+  --color-ui-text-white: var(--ui-text-white);
+  --color-ui-text-disabled: var(--ui-text-disabled);
+  --color-ui-text-brand: var(--ui-text-brand);
+  --color-ui-text-brand-hover: var(--ui-text-brand-hover);
+  --color-ui-text-positive: var(--ui-text-positive);
+  --color-ui-text-negative: var(--ui-text-negative);
+  --color-ui-text-caution: var(--ui-text-caution);
+
+  /* UI Accent Colors */
+  --color-accent-rose: var(--accent-rose);
+  --color-accent-pink: var(--accent-pink);
+  --color-accent-fuchsia: var(--accent-fuchsia);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-violet: var(--accent-violet);
+  --color-accent-indigo: var(--accent-indigo);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-sky: var(--accent-sky);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-accent-teal: var(--accent-teal);
+  --color-accent-emerald: var(--accent-emerald);
+  --color-accent-green: var(--accent-green);
+  --color-accent-amber: var(--accent-amber);
+  --color-accent-orange: var(--accent-orange);
+}
+
+@layer base {
+  .theme {
+    --font-heading: 'Poppins', sans-serif;
+    --font-sans: 'Poppins', sans-serif;
+  }
+
+  :root,
+  .dark {
+    color-scheme: dark;
+
+    --font-sans: 'Poppins', sans-serif;
+    --font-heading: 'Poppins', sans-serif;
+
+    /* Shadcn Core Tokens (Dark) */
+    --background: #141414;
+    --foreground: #FFFFFF;
+    --card: #1F1F1F;
+    --card-foreground: #FFFFFF;
+    --popover: #1F1F1F;
+    --popover-foreground: #FFFFFF;
+    --primary: #6366F1;
+    --primary-foreground: #FFFFFF;
+    --secondary: #27272A;
+    --secondary-foreground: #FFFFFF;
+    --muted: #262626;
+    --muted-foreground: #A3A3A3;
+    --accent: #262626;
+    --accent-foreground: #FFFFFF;
+    --destructive: #DC2626;
+    --destructive-foreground: #FFFFFF;
+    --border: #3D3D3D;
+    --input: #3D3D3D;
+    --ring: #6366F1;
+    --chart-1: #6366F1;
+    --chart-2: #3B82F6;
+    --chart-3: #10B981;
+    --chart-4: #F59E0B;
+    --chart-5: #EC4899;
+    --radius: 0.625rem;
+    --sidebar: #141414;
+    --sidebar-foreground: #FFFFFF;
+    --sidebar-primary: #6366F1;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #262626;
+    --sidebar-accent-foreground: #FFFFFF;
+    --sidebar-border: #3D3D3D;
+    --sidebar-ring: #6366F1;
+
+    /* UI_Border (Dark) */
+    --ui-border-base: #3D3D3D;
+    --ui-border-base-light: #303030;
+    --ui-border-base-disabled: #303030;
+    --ui-border-base-white: #FFFFFF;
+    --ui-border-base-inverse: #FFFFFF;
+    --ui-border-brand: #6366F1;
+    --ui-border-brand-light: #A5B4FC;
+    --ui-border-negative: #DC2626;
+    --ui-border-negative-light: #FCA5A5;
+    --ui-border-transparent-tint: #FFFFFF;
+    --ui-border-transparent-shade: #000000;
+    --ui-border-transparent-inverse: #FFFFFF;
+
+    /* UI_Background (Dark) */
+    --ui-bg-app: #141414;
+    --ui-bg-card: #1F1F1F;
+    --ui-bg-card-light: #262626;
+    --ui-bg-card-inverse: #FFFFFF;
+    --ui-bg-brand: #4F46E5;
+    --ui-bg-brand-light: #312E81;
+    --ui-bg-positive: #15803D;
+    --ui-bg-positive-light: #14532D;
+    --ui-bg-negative: #B91C1C;
+    --ui-bg-negative-light: #7F1D1D;
+    --ui-bg-caution: #B45309;
+    --ui-bg-caution-light: #78350F;
+    --ui-bg-transparent-tint: #FFFFFF;
+    --ui-bg-transparent-shade: #000000;
+
+    /* UI_Interactive (Dark) */
+    --ui-interactive-base: #262626;
+    --ui-interactive-base-hover: #303030;
+    --ui-interactive-base-active: #3D3D3D;
+    --ui-interactive-light: #27272A;
+    --ui-interactive-light-hover: #3F3F46;
+    --ui-interactive-light-active: #52525B;
+    --ui-interactive-brand: #6366F1;
+    --ui-interactive-brand-hover: #4F46E5;
+    --ui-interactive-brand-active: #4338CA;
+    --ui-interactive-brand-disabled: #312E81;
+    --ui-interactive-positive: #16A34A;
+    --ui-interactive-positive-hover: #15803D;
+    --ui-interactive-positive-active: #166534;
+    --ui-interactive-negative: #DC2626;
+    --ui-interactive-negative-hover: #B91C1C;
+    --ui-interactive-negative-active: #991B1B;
+    --ui-interactive-caution: #D97706;
+    --ui-interactive-caution-hover: #B45309;
+    --ui-interactive-caution-active: #92400E;
+    --ui-interactive-inverse: #FFFFFF;
+    --ui-interactive-inverse-hover: #F5F5F5;
+    --ui-interactive-inverse-active: #E5E5E5;
+
+    /* UI_Text_and_Icon (Dark) */
+    --ui-text-primary: #FFFFFF;
+    --ui-text-secondary: #A3A3A3;
+    --ui-text-tertiary: #525252;
+    --ui-text-white: #FFFFFF;
+    --ui-text-disabled: #525252;
+    --ui-text-brand: #818CF8;
+    --ui-text-brand-hover: #6366F1;
+    --ui-text-positive: #16A34A;
+    --ui-text-negative: #DC2626;
+    --ui-text-caution: #D97706;
+    --ui-text-transparent-tint: #FFFFFF;
+    --ui-text-transparent-shade: #000000;
+
+    /* Accent Colors */
+    --accent-rose: #F43F5E;
+    --accent-pink: #EC4899;
+    --accent-fuchsia: #D946EF;
+    --accent-purple: #A855F7;
+    --accent-violet: #8B5CF6;
+    --accent-indigo: #6366F1;
+    --accent-blue: #3B82F6;
+    --accent-sky: #0EA5E9;
+    --accent-cyan: #06B6D4;
+    --accent-teal: #14B8A6;
+    --accent-emerald: #10B981;
+    --accent-green: #22C55E;
+    --accent-amber: #F59E0B;
+    --accent-orange: #F97316;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  html {
+    @apply font-sans;
+    font-family: var(--font-sans);
+  }
+}
+
+@keyframes sceneFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-scene-fade {
+  animation: sceneFadeIn 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-tab-fade {
+  animation: tabFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Base UI Dropdown Menu Smooth Animation */
+.dropdown-menu-popup {
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.dropdown-menu-popup[data-starting-style],
+.dropdown-menu-popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.95) translateY(-4px);
+}
+
+@keyframes sceneFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-scene-fade {
+  animation: sceneFadeIn 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-tab-fade {
+  animation: tabFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Base UI Dropdown Menu Smooth Animation */
+.dropdown-menu-popup {
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.dropdown-menu-popup[data-starting-style],
+.dropdown-menu-popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.95) translateY(-4px);
+}
