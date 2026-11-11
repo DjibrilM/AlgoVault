@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface TopHeaderProps {
   onSearch?: (query: string) => void
@@ -50,9 +51,13 @@ export function TopHeader({ onSearch }: TopHeaderProps) {
             onBlur={() => setIsFocused(false)}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder={isFocused ? 'Search problems, topics, solutions...' : ''}
-            className={`w-full h-8 text-xs rounded-lg bg-[#222222] border border-[#2E2E2E] hover:border-[#3D3D3D] focus:border-white/20 focus:bg-[#1A1A1A] focus:ring-1 focus:ring-white/10 text-white placeholder:text-[#525252] transition-all outline-none ${
-              isFocused || searchQuery ? 'text-left pl-3.5 pr-8' : 'text-center px-4'
-            }`}
+            className={cn(
+              'w-full h-8 text-xs rounded-lg bg-[#222222] border border-[#2E2E2E] hover:border-[#3D3D3D] focus:border-white/20 focus:bg-[#1A1A1A] focus:ring-1 focus:ring-white/10 text-white placeholder:text-[#525252] transition-all outline-none',
+              {
+                'text-left pl-3.5 pr-8': isFocused || searchQuery,
+                'text-center px-4': !isFocused && !searchQuery,
+              }
+            )}
           />
 
           {/* Centered Search Icon + Placeholder (disappears on focus or active query) */}
