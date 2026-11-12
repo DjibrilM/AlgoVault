@@ -24,3 +24,13 @@ release
 *.njsproj
 *.sln
 *.sw?
+
+# OS and Engine Runner Assets / Micro-VM Images
+macos-arm64/
+**/assets/macos-arm64/
+**/assets/*/Image
+**/assets/*/qemu-*
+**/assets/*/rootfs.*
+*.ext4
+*.ext4.sha256
+

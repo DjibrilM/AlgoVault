@@ -27,6 +27,8 @@ export function ChallengeWorkspace({
   const {
     code,
     setCode,
+    selectedLang,
+    setSelectedLang,
     isRunning,
     runResult,
     currentProblem,
@@ -113,6 +115,8 @@ export function ChallengeWorkspace({
                 problem={currentProblem}
                 code={code}
                 onChangeCode={setCode}
+                selectedLang={selectedLang}
+                onSelectLang={setSelectedLang}
                 onRun={handleRunCode}
                 onSubmit={handleSubmitCode}
                 isRunning={isRunning}

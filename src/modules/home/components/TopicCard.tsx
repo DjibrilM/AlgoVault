@@ -1,4 +1,4 @@
-import { Layers, Code2, Cpu, CheckCircle2, ChevronRight } from 'lucide-react'
+import { Layers, Code2, Cpu, Calculator, CheckCircle2, ChevronRight } from 'lucide-react'
 import { TopicCardProps } from '../types'
 
 export function TopicCard({ category, problems, onSelect }: TopicCardProps) {
@@ -13,7 +13,9 @@ export function TopicCard({ category, problems, onSelect }: TopicCardProps) {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="h-9 w-9 rounded-xl bg-[#6366F1]/10 border border-[#6366F1]/30 flex items-center justify-center text-[#6366F1]">
-            {category.name.includes('Data') ? (
+            {category.name.includes('Arithmetic') ? (
+              <Calculator className="h-4 w-4" />
+            ) : category.name.includes('Data') ? (
               <Layers className="h-4 w-4" />
             ) : category.name.includes('Algo') ? (
               <Code2 className="h-4 w-4" />

@@ -1,0 +1,31 @@
+#!/bin/sh
+# PID 1 of the AlgoVault sandbox VM (kernel cmdline: init=/sbin/algovault-init).
+# Root filesystem is mounted read-only; everything writable lives in tmpfs.
+# There is no network interface besides loopback, no getty and no login.
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export HOME=/root
+
+mount -t proc  -o nosuid,nodev,noexec proc /proc
+mount -t sysfs -o nosuid,nodev,noexec sys  /sys
+mountpoint -q /dev || mount -t devtmpfs dev /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts -o nosuid,noexec devpts /dev/pts
+mount -t tmpfs  -o nosuid,nodev,size=64m  tmpfs /dev/shm
+mount -t tmpfs  -o nosuid,nodev,mode=1777,size=256m tmpfs /tmp
+mount -t tmpfs  -o nosuid,nodev,mode=755,size=8m    tmpfs /run
+ln -sf /proc/self/fd /dev/fd 2>/dev/null
+
+hostname sandbox
+# Bring up loopback (127.0.0.1) only. There is no other network interface.
+ifconfig lo 127.0.0.1 up 2>/dev/null || busybox ip link set lo up 2>/dev/null
+
+# Do not let user code see kernel pointers / dmesg.
+echo 2 > /proc/sys/kernel/kptr_restrict 2>/dev/null
+echo 1 > /proc/sys/kernel/dmesg_restrict 2>/dev/null
+
+# tini reaps orphaned processes. If the agent ever exits, tini exits, the
+# kernel panics (panic=-1 -> reboot) and QEMU (-no-reboot) terminates, so the
+# host sees the VM die and can start a fresh one.
+exec /sbin/tini -s -- /usr/bin/python3 -u -B /opt/algovault/agent.py
+
