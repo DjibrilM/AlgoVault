@@ -1,14 +1,26 @@
 /**
  * Boots the sandbox VM and runs a small program in every supported language.
  *
- *   node electron/modules/engine-runner/scripts/smoke-test.ts [--console]
+ *   node electron/modules/engine-runner/scripts/smoke-test.ts [--console] [--arch arm64|x64]
  */
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SandboxVm, type Language, type RunResult } from '../sandboxVm.ts'
+import {
+  SandboxVm,
+  resolveVmArch,
+  getPlatformFolderName,
+  type Language,
+  type RunResult,
+  type VmArch,
+} from '../sandboxVm.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const assetsDir = path.resolve(here, '../assets/macos-arm64')
+const archFlagIdx = process.argv.indexOf('--arch')
+const targetArch: VmArch = archFlagIdx >= 0 && process.argv[archFlagIdx + 1]
+  ? resolveVmArch(process.argv[archFlagIdx + 1])
+  : resolveVmArch(process.arch)
+const platformFolder = getPlatformFolderName(targetArch, process.platform)
+const assetsDir = path.resolve(here, `../assets/${platformFolder}`)
 const showConsole = process.argv.includes('--console')
 
 const SUM_INPUT = [{ stdin: '1 2\n' }, { stdin: '40 2\n' }]
@@ -63,12 +75,13 @@ const check = (ok: boolean, label: string, detail = '') => {
 
 const vm = new SandboxVm({
   assetsDir,
+  arch: targetArch,
   onConsole: showConsole ? (d) => process.stdout.write(d) : undefined,
 })
 
 const t0 = Date.now()
 await vm.start()
-console.log(`VM ready in ${Date.now() - t0} ms`, vm.versions)
+console.log(`VM (${platformFolder}) ready in ${Date.now() - t0} ms`, vm.versions)
 
 console.log('\nLanguages (a + b, two test cases):')
 for (const [lang, code] of Object.entries(programs) as [Language, string][]) {

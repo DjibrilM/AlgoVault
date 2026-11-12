@@ -56,6 +56,17 @@ export interface MarathonStep {
   completed: boolean
 }
 
+export interface MarathonTrack {
+  id: string
+  title: string
+  subtitle: string
+  description: string
+  coverIndex: number
+  steps: MarathonStep[]
+  difficultyRange: string
+  tags?: string[]
+}
+
 export interface AICategory {
   id: string
   name: string

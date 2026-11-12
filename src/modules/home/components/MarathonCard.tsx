@@ -1,6 +1,6 @@
-import { Flame, ChevronRight } from 'lucide-react'
 import { MarathonCardProps } from '../types'
 import { homeService } from '../services/homeService'
+import mountainImg from '@/assets/images/marathons/mountain-flag.png'
 
 export function MarathonCard({ marathonSteps, onSelect }: MarathonCardProps) {
   const { totalCount, percentage, nextStep } =
@@ -16,22 +16,23 @@ export function MarathonCard({ marathonSteps, onSelect }: MarathonCardProps) {
 
       <div
         onClick={onSelect}
-        className="group relative rounded-2xl border border-[#F59E0B]/30 bg-gradient-to-br from-[#1F1B14] to-[#171410] p-6 hover:border-[#F59E0B]/60 transition-all cursor-pointer shadow-lg hover:shadow-xl"
+        className="group relative rounded-2xl bg-[#181818] p-6 hover:bg-[#1E1E1E] transition-all cursor-pointer shadow-lg hover:shadow-xl"
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-xl bg-[#F59E0B]/20 border border-[#F59E0B]/40 flex items-center justify-center text-[#F59E0B]">
-                <Flame className="h-4 w-4" />
+              <div className="h-8 w-8 rounded-xl bg-white/10 flex items-center justify-center">
+                <img
+                  src={mountainImg}
+                  alt="Marathon"
+                  className="h-6 w-6 object-contain drop-shadow"
+                />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white group-hover:text-[#F59E0B] transition-colors">
+                <h2 className="text-lg font-bold text-white transition-colors">
                   Marathon Mode
                 </h2>
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30">
-                Easiest → Hardest
-              </span>
             </div>
 
             <p className="text-xs text-[#A3A3A3] max-w-xl leading-relaxed">
@@ -42,21 +43,14 @@ export function MarathonCard({ marathonSteps, onSelect }: MarathonCardProps) {
             <div className="flex items-center gap-3 pt-2">
               <div className="w-48 bg-[#262626] h-1.5 rounded-full overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-[#F59E0B] to-[#10B981] h-full transition-all duration-300"
+                  className="bg-white h-full transition-all duration-300"
                   style={{ width: `${percentage}%` }}
                 />
               </div>
-              <span className="text-[11px] font-mono text-[#F59E0B] font-semibold">
+              <span className="text-[11px] font-mono text-white/80 font-semibold">
                 Step {nextStep} of {totalCount} Unlocked
               </span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-white group-hover:translate-x-1 transition-transform flex items-center gap-1">
-              <span>Enter Marathon</span>
-              <ChevronRight className="h-4 w-4 text-[#F59E0B]" />
-            </span>
           </div>
         </div>
       </div>

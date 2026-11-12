@@ -21,11 +21,11 @@ export function ChallengeSidebar({
     <div className="flex flex-col h-full bg-[#181818] text-[#D4D4D4] select-none text-xs">
       {/* Category Header */}
       <div className="h-10 border-b border-[#262626] px-3 flex items-center justify-between shrink-0 bg-[#181818]">
-        <div className="min-w-0 flex flex-col justify-center ml-1">
+        <div className="min-w-0 flex flex-col justify-center">
           <h2 className="font-bold text-xs text-white truncate leading-tight">
             {categoryTitle}
           </h2>
-          <p className="text-[10px] text-[#737373] leading-none mt-1">
+          <p className="text-[10px] text-[#737373] leading-none mt-0.5">
             {problems.length} challenges
           </p>
         </div>
@@ -33,7 +33,7 @@ export function ChallengeSidebar({
         {onClose && (
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+            className="p-1 rounded-md text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
             title="Close sidebar (⌘B)"
           >
             <PanelLeftClose className="h-4 w-4 text-white" />
