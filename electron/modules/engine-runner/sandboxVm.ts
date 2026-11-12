@@ -27,6 +27,78 @@ import { existsSync, rmSync, mkdtempSync } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * Supported guest/host CPU architectures for the sandbox VM.
+ */
+export type VmArch = 'arm64' | 'x64'
+
+/**
+ * Normalizes a Node.js `process.arch` string or folder suffix into a `VmArch`.
+ */
+export function resolveVmArch(arch: string = process.arch): VmArch {
+  if (arch === 'arm64' || arch === 'aarch64') return 'arm64'
+  if (arch === 'x64' || arch === 'x86_64' || arch === 'amd64') return 'x64'
+  throw new Error(`Unsupported sandbox VM architecture: ${arch}`)
+}
+
+/**
+ * Infers the VM architecture from an assets directory name (e.g. `macos-x64` -> `x64`),
+ * falling back to the current host `process.arch`.
+ */
+export function inferArchFromAssetsDir(assetsDir: string): VmArch {
+  const base = path.basename(assetsDir).toLowerCase()
+  if (base.endsWith('-x64') || base.endsWith('-x86_64') || base.endsWith('-amd64')) {
+    return 'x64'
+  }
+  if (base.endsWith('-arm64') || base.endsWith('-aarch64')) {
+    return 'arm64'
+  }
+  return resolveVmArch(process.arch)
+}
+
+/**
+ * Returns the platform folder name under `assets/` for a given architecture and OS
+ * (e.g. `macos-arm64` or `macos-x64`).
+ */
+export function getPlatformFolderName(
+  arch: VmArch = resolveVmArch(process.arch),
+  platform: string = process.platform,
+): string {
+  const osPrefix = platform === 'darwin' ? 'macos' : platform
+  return `${osPrefix}-${arch}`
+}
+
+/**
+ * Resolves the default asset directory for the QEMU binary, Linux kernel Image, and rootfs.ext4
+ * based on the current OS and CPU architecture (`macos-arm64` on Apple Silicon, `macos-x64` on Intel).
+ */
+export function resolveDefaultAssetsDir(arch?: VmArch): string {
+  const targetArch = arch ?? resolveVmArch(process.arch)
+  const platformFolder = getPlatformFolderName(targetArch, process.platform)
+
+  const currentDir = typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url))
+
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+
+  const candidates = [
+    ...(resourcesPath ? [path.join(resourcesPath, 'assets', platformFolder)] : []),
+    path.resolve(currentDir, 'assets', platformFolder),
+    path.resolve(currentDir, '../../engine-runner/assets', platformFolder),
+    path.resolve(process.cwd(), 'electron/modules/engine-runner/assets', platformFolder),
+  ]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return candidates[0]
+}
 
 /**
  * Supported programming languages for sandbox execution.
@@ -125,9 +197,15 @@ export interface RunResult {
 export interface SandboxVmOptions {
   /**
    * Directory holding the QEMU binary, Linux kernel Image, and rootfs.ext4 disk image.
-   * Typically points to `electron/modules/engine-runner/assets/<platform>`.
+   * Defaults to `electron/modules/engine-runner/assets/<platform>-<arch>` based on OS & CPU.
    */
-  assetsDir: string
+  assetsDir?: string
+
+  /**
+   * Target VM architecture ('arm64' or 'x64').
+   * Defaults to inferring from `assetsDir` or the host's `process.arch`.
+   */
+  arch?: VmArch
 
   /**
    * Memory allocated to the guest virtual machine in megabytes. Defaults to 1024 MB.
@@ -203,10 +281,13 @@ export class SandboxVm extends EventEmitter {
   /** Buffer of recent VM console output for diagnostics if boot fails. */
   private bootLogs: string[] = []
 
-  constructor(opts: SandboxVmOptions) {
+  constructor(opts: SandboxVmOptions = {}) {
     super()
+    const arch = opts.arch ?? (opts.assetsDir ? inferArchFromAssetsDir(opts.assetsDir) : resolveVmArch(process.arch))
+    const assetsDir = opts.assetsDir ?? resolveDefaultAssetsDir(arch)
     this.opts = {
-      assetsDir: opts.assetsDir,
+      assetsDir,
+      arch,
       memoryMb: opts.memoryMb ?? 1024,
       cpus: opts.cpus ?? 2,
       bootTimeoutMs: opts.bootTimeoutMs ?? 30_000,
@@ -228,14 +309,24 @@ export class SandboxVm extends EventEmitter {
    * @throws Error if required binary or disk assets are missing, or if boot times out.
    */
   async start(): Promise<void> {
-    const { assetsDir } = this.opts
-    const qemuBin = path.join(assetsDir, 'qemu-system-aarch64')
-    const kernel = path.join(assetsDir, 'Image')
+    const { assetsDir, arch } = this.opts
+    const isArm64 = arch === 'arm64'
+
+    const qemuBinName = isArm64 ? 'qemu-system-aarch64' : 'qemu-system-x86_64'
+    const qemuBin = path.join(assetsDir, qemuBinName)
+
+    // Support 'Image' (standard across both folders) or 'bzImage' fallback for x86_64
+    const imageCandidate = path.join(assetsDir, 'Image')
+    const bzImageCandidate = path.join(assetsDir, 'bzImage')
+    const kernel = (!isArm64 && !existsSync(imageCandidate) && existsSync(bzImageCandidate))
+      ? bzImageCandidate
+      : imageCandidate
+
     const rootfs = path.join(assetsDir, 'rootfs.ext4')
 
     // Verify all pre-built VM artifacts exist before attempting to spawn QEMU.
     for (const f of [qemuBin, kernel, rootfs]) {
-      if (!existsSync(f)) throw new Error(`missing sandbox asset: ${f}`)
+      if (!existsSync(f)) throw new Error(`missing sandbox asset (${arch}): ${f}`)
     }
 
     // Allocate a unique temporary directory for the Unix domain socket.
@@ -246,16 +337,27 @@ export class SandboxVm extends EventEmitter {
     this.tmpDir = mkdtempSync(path.join(tmpBase, 'avvm-'))
     const sockPath = path.join(this.tmpDir, 'agent.sock')
 
-    // Select hardware hypervisor acceleration: macOS Hypervisor.framework ('hvf') or Linux KVM ('kvm').
-    const accel = process.platform === 'darwin' ? 'hvf' : 'kvm'
+    // Select hardware hypervisor acceleration when host CPU matches guest architecture:
+    // - macOS Hypervisor.framework ('hvf') or Linux KVM ('kvm') with '-cpu host'
+    // - Falls back to software TCG emulation ('tcg') with '-cpu max' if cross-testing architectures.
+    const hostArch = resolveVmArch(process.arch)
+    const canUseHwAccel = hostArch === arch
+    const accel = canUseHwAccel ? (process.platform === 'darwin' ? 'hvf' : 'kvm') : 'tcg'
+    const cpuModel = canUseHwAccel ? 'host' : 'max'
+
+    // Architecture-specific machine, serial console, and virtio bus device types:
+    // - arm64: 'virt' machine, PL011 UART (ttyAMA0), virtio MMIO devices (*-device)
+    // - x64:   'pc' machine, 8250 UART (ttyS0), virtio PCI devices (*-pci)
+    const machine = isArm64 ? 'virt' : 'pc'
+    const consoleDev = isArm64 ? 'ttyAMA0' : 'ttyS0'
+    const virtioBlkDevice = isArm64 ? 'virtio-blk-device,drive=root' : 'virtio-blk-pci,drive=root'
+    const virtioRngDevice = isArm64 ? 'virtio-rng-device' : 'virtio-rng-pci'
+    const virtioSerialDevice = isArm64 ? 'virtio-serial-device' : 'virtio-serial-pci'
 
     // Build the QEMU command-line argument list.
     const args = [
       // Virtual machine machine type and CPU configuration:
-      // -M virt: Generic modern ARM virtual board without legacy PC hardware emulation overhead.
-      // -accel: Hardware-assisted virtualization for near-native execution speed.
-      // -cpu host: Expose host processor features directly to the guest.
-      '-M', 'virt', '-accel', accel, '-cpu', 'host',
+      '-M', machine, '-accel', accel, '-cpu', cpuModel,
 
       // Sizing: Memory and virtual CPU core counts.
       '-m', String(this.opts.memoryMb), '-smp', String(this.opts.cpus),
@@ -267,7 +369,7 @@ export class SandboxVm extends EventEmitter {
       '-nodefaults', '-no-user-config', '-no-reboot',
 
       // Headless execution: No display window, no interactive management monitor.
-      // Redirect guest serial console (ttyAMA0) directly to QEMU's stdout/stderr.
+      // Redirect guest serial console directly to QEMU's stdout/stderr.
       '-display', 'none', '-monitor', 'none', '-serial', 'stdio',
 
       // Kernel and bootloader configuration:
@@ -276,26 +378,26 @@ export class SandboxVm extends EventEmitter {
 
       // Linux kernel command line arguments:
       // - root=/dev/vda ro rootfstype=ext4: Mount first virtio disk as root in read-only mode.
-      // - console=ttyAMA0: Route kernel messages to the virtual ARM PL011 UART serial device.
+      // - console=ttyAMA0 / ttyS0: Route kernel messages to the virtual UART serial device.
       // - init=/sbin/algovault-init: Bypass standard multi-user systemd/OpenRC and run our custom PID 1 script.
       // - quiet: Suppress non-critical kernel boot messages for faster, cleaner startup.
       // - panic=-1: Trigger immediate reboot/exit upon kernel panic (caught by -no-reboot to terminate QEMU).
-      '-append', 'root=/dev/vda ro rootfstype=ext4 console=ttyAMA0 init=/sbin/algovault-init quiet panic=-1',
+      '-append', `root=/dev/vda ro rootfstype=ext4 console=${consoleDev} init=/sbin/algovault-init quiet panic=-1`,
 
       // Storage subsystem:
       // Mount rootfs.ext4 as a read-only virtio block device (/dev/vda).
       // Enforcing readonly=on at the hypervisor level guarantees no writes can persist to the disk.
       '-drive', `file=${rootfs},if=none,format=raw,readonly=on,id=root`,
-      '-device', 'virtio-blk-device,drive=root',
+      '-device', virtioBlkDevice,
 
       // Entropy source: Provide hardware random number generation to prevent blocking on /dev/random.
-      '-device', 'virtio-rng-device',
+      '-device', virtioRngDevice,
 
       // Communication subsystem:
       // Create a virtio-serial bus and expose a named port ('algovault.agent').
       // QEMU exposes this port to the host as a listening Unix domain socket at `sockPath`.
       // wait=off instructs QEMU to continue booting without waiting for a host client connection.
-      '-device', 'virtio-serial-device',
+      '-device', virtioSerialDevice,
       '-chardev', `socket,id=agent,path=${sockPath},server=on,wait=off`,
       '-device', 'virtserialport,chardev=agent,name=algovault.agent',
 

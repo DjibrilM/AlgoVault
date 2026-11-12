@@ -3,10 +3,7 @@
  * @description NestJS-style Provider handling SandboxVm lifecycle and challenge code evaluation.
  */
 
-import { existsSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { SandboxVm } from '../../engine-runner/sandboxVm.ts'
+import { SandboxVm, resolveDefaultAssetsDir } from '../../engine-runner/sandboxVm.ts'
 import { EASY_PROBLEMS } from '../../../../src/shared/data/problems/easyProblems.ts'
 import { injectHarnessWithBabel, hasStandardIO } from '../../../../src/modules/challenge/utils/babelInjector.ts'
 import { abstractUserFacingCode } from '../../../../src/modules/challenge/utils/codeAbstractor.ts'
@@ -23,32 +20,6 @@ import type {
   EvaluationResultDto,
   TestCaseResultDto,
 } from '../types/index.ts'
-
-/**
- * Resolves the default asset directory for the QEMU binary, Linux kernel Image, and rootfs.ext4.
- */
-function resolveDefaultAssetsDir(): string {
-  const isDarwin = process.platform === 'darwin'
-  const platformFolder = isDarwin ? 'macos-arm64' : `${process.platform}-${process.arch}`
-
-  const currentDir = typeof __dirname !== 'undefined'
-    ? __dirname
-    : path.dirname(fileURLToPath(import.meta.url))
-
-  const candidates = [
-    path.resolve(currentDir, '../../engine-runner/assets', platformFolder),
-    path.resolve(process.cwd(), 'electron/modules/engine-runner/assets', platformFolder),
-    path.join(process.resourcesPath || '', 'assets', platformFolder),
-  ]
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate
-    }
-  }
-
-  return candidates[0]
-}
 
 /**
  * Normalizes output strings for robust judge comparison (handles whitespace, JSON arrays, and booleans).

@@ -143,10 +143,11 @@ export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) 
       {/* Bottom Status / Profile Avatar Indicator */}
       <div className="flex flex-col items-center w-full px-2">
         <button
-          className="h-10 w-10 rounded-full bg-[#16A34A] border-2 border-[#16A34A]/40 flex items-center justify-center text-white font-semibold text-xs shadow-md hover:scale-105 transition-transform cursor-pointer"
-          title="Profile & Status (Online)"
+          className="relative h-9 w-9 rounded-full bg-[#202020] border border-[#333333] flex items-center justify-center text-white/90 font-semibold text-xs shadow-md hover:border-white/30 transition-all cursor-pointer"
+          title="Profile & Workspace Status"
         >
-          <span className="sr-only">Profile</span>
+          <span>AV</span>
+          <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-[#141414]" />
         </button>
       </div>
     </aside>

@@ -9,13 +9,24 @@
   },
   "files": [
     "dist",
-    "dist-electron"
+    "dist-electron",
+    "!electron/modules/engine-runner/assets/**"
   ],
   "mac": {
     "target": [
       "dmg"
     ],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+    "extraResources": [
+      {
+        "from": "electron/modules/engine-runner/assets/macos-${arch}",
+        "to": "assets/macos-${arch}",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-Mac-${arch}-${version}-Installer.${ext}"
   },
   "win": {
     "target": [
@@ -38,6 +49,16 @@
     "target": [
       "AppImage"
     ],
-    "artifactName": "${productName}-Linux-${version}.${ext}"
+    "extraResources": [
+      {
+        "from": "electron/modules/engine-runner/assets/linux-${arch}",
+        "to": "assets/linux-${arch}",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-Linux-${arch}-${version}.${ext}"
   }
 }

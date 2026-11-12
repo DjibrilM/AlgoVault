@@ -1,6 +1,13 @@
 import { useState } from 'react'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  canGoBackAtom,
+  canGoForwardAtom,
+  goBackAtom,
+  goForwardAtom,
+} from '@/shared/store'
 
 interface TopHeaderProps {
   onSearch?: (query: string) => void
@@ -9,6 +16,10 @@ interface TopHeaderProps {
 export function TopHeader({ onSearch }: TopHeaderProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [isFocused, setIsFocused] = useState(false)
+  const canGoBack = useAtomValue(canGoBackAtom)
+  const canGoForward = useAtomValue(canGoForwardAtom)
+  const goBack = useSetAtom(goBackAtom)
+  const goForward = useSetAtom(goForwardAtom)
 
   const handleSearchChange = (val: string) => {
     setSearchQuery(val)
@@ -27,13 +38,17 @@ export function TopHeader({ onSearch }: TopHeaderProps) {
         {/* Back & Forward Arrows (Larger comfortable touch targets) */}
         <div className="flex items-center gap-1.5 text-[#A3A3A3]">
           <button
-            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-[#222222] hover:text-white active:scale-95 transition-all cursor-pointer"
+            onClick={() => goBack()}
+            disabled={!canGoBack}
+            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-[#222222] hover:text-white active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
             title="Go back"
           >
             <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
           </button>
           <button
-            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-[#222222] hover:text-white active:scale-95 transition-all cursor-pointer"
+            onClick={() => goForward()}
+            disabled={!canGoForward}
+            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-[#222222] hover:text-white active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
             title="Go forward"
           >
             <ChevronRight className="h-5 w-5" strokeWidth={2.2} />

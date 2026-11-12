@@ -7,6 +7,9 @@ import {
   problemsAtom,
   categoriesAtom,
   marathonStepsAtom,
+  marathonsAtom,
+  isViewingAllMarathonsAtom,
+  isSolvingChallengeAtom,
   activeCategoryAtom,
   activeProblemsAtom,
   selectedProblemIdAtom,
@@ -14,6 +17,11 @@ import {
   toggleSidebarAtom,
   solveProblemAtom,
   selectCategoryAtom,
+  openChallengeAtom,
+  backToCategoryListAtom,
+  closeCategoryAtom,
+  navigateSectionAtom,
+  viewAllMarathonsAtom,
   generateCategoryAtom,
 } from '@/shared/store'
 
@@ -22,11 +30,14 @@ import {
  * Coordinates navigation, categories, problems, and cross-feature transitions.
  */
 export function useAppWorkspace() {
-  const [activeNav, setActiveNav] = useAtom(activeNavAtom)
+  const [activeNav] = useAtom(activeNavAtom)
   const [problems] = useAtom(problemsAtom)
   const [categories] = useAtom(categoriesAtom)
   const [marathonSteps] = useAtom(marathonStepsAtom)
-  const [activeCategory, setActiveCategory] = useAtom(activeCategoryAtom)
+  const [marathons] = useAtom(marathonsAtom)
+  const [isViewingAllMarathons] = useAtom(isViewingAllMarathonsAtom)
+  const [isSolvingChallenge] = useAtom(isSolvingChallengeAtom)
+  const [activeCategory] = useAtom(activeCategoryAtom)
   const activeProblems = useAtomValue(activeProblemsAtom)
   const [selectedProblemId, setSelectedProblemId] = useAtom(selectedProblemIdAtom)
   const [isSidebarOpen, setIsSidebarOpen] = useAtom(isSidebarOpenAtom)
@@ -34,6 +45,11 @@ export function useAppWorkspace() {
   const toggleSidebarAction = useSetAtom(toggleSidebarAtom)
   const solveProblem = useSetAtom(solveProblemAtom)
   const selectCategory = useSetAtom(selectCategoryAtom)
+  const openChallengeAction = useSetAtom(openChallengeAtom)
+  const backToCategoryListAction = useSetAtom(backToCategoryListAtom)
+  const closeCategoryAction = useSetAtom(closeCategoryAtom)
+  const navigateSectionAction = useSetAtom(navigateSectionAtom)
+  const viewAllMarathonsAction = useSetAtom(viewAllMarathonsAtom)
   const generateCategory = useSetAtom(generateCategoryAtom)
 
   const toggleSidebar = useCallback(() => {
@@ -47,7 +63,19 @@ export function useAppWorkspace() {
   }
 
   const handleSelectCategory = (catName: string, isMarathon = false) => {
-    selectCategory({ name: catName, isMarathon })
+    selectCategory({ name: catName, isMarathon, startSolving: false })
+  }
+
+  const handleOpenChallenge = (problemId: number) => {
+    openChallengeAction(problemId)
+  }
+
+  const handleBackToCategoryList = () => {
+    backToCategoryListAction()
+  }
+
+  const handleViewAllMarathons = () => {
+    viewAllMarathonsAction()
   }
 
   const handleGenerateCategory = (prompt: string) => {
@@ -55,19 +83,15 @@ export function useAppWorkspace() {
   }
 
   const handleNavChange = (nav: NavSection) => {
-    setActiveNav(nav)
-    if (nav === 'home') {
-      setActiveCategory(null)
-    }
+    navigateSectionAction(nav)
   }
 
   const returnHome = () => {
-    setActiveNav('home')
-    setActiveCategory(null)
+    navigateSectionAction('home')
   }
 
   const closeCategory = () => {
-    setActiveCategory(null)
+    closeCategoryAction()
   }
 
   return {
@@ -75,6 +99,9 @@ export function useAppWorkspace() {
     problems,
     categories,
     marathonSteps,
+    marathons,
+    isViewingAllMarathons,
+    isSolvingChallenge,
     activeCategory,
     activeProblems,
     selectedProblemId,
@@ -84,6 +111,9 @@ export function useAppWorkspace() {
     toggleSidebar,
     handleSolveProblem,
     handleSelectCategory,
+    handleOpenChallenge,
+    handleBackToCategoryList,
+    handleViewAllMarathons,
     handleGenerateCategory,
     handleNavChange,
     returnHome,
