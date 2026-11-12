@@ -1,41 +1,93 @@
-import { Problem, RunResult, Difficulty } from '../types'
+/**
+ * @file challengeService.ts
+ * @description Frontend challenge & judge service.
+ *
+ * Dispatches code execution requests over Electron IPC (analogous to an HTTP API client)
+ * to the `code-test:evaluate` backend endpoint. The client sends the challenge ID and code
+ * submission, and the backend service handles the execution, comparison, and telemetry.
+ */
+
+import { Problem, RunResult, Difficulty, SupportedLang } from '../types'
+import { injectHarnessWithBabel } from '../utils/babelInjector.ts'
+import { abstractUserFacingCode } from '../utils/codeAbstractor.ts'
 
 /**
- * Service handling code execution simulation, submissions, and problem navigation
+ * Service handling code execution and submission judging over Electron IPC.
  */
 export const challengeService = {
   /**
-   * Simulates running code against sample test cases
+   * Runs user code against visible test cases for quick feedback in the editor.
    */
-  async runCode(problem: Problem, code: string): Promise<RunResult> {
-    void code
-    await new Promise((resolve) => setTimeout(resolve, 550))
-    const sampleOutput = problem.testCases?.[0]?.expected ?? 'true'
+  async runCode(problem: Problem, code: string, lang: SupportedLang = 'typescript'): Promise<RunResult> {
+    return this.evaluate(problem, code, lang, 'run')
+  },
+
+  /**
+   * Submits user code for complete evaluation against all visible AND hidden test cases.
+   */
+  async submitCode(problem: Problem, code: string, lang: SupportedLang = 'typescript'): Promise<RunResult> {
+    return this.evaluate(problem, code, lang, 'submit')
+  },
+
+  /**
+   * Core request/response cycle dispatching to the backend CodeTestService.
+   */
+  async evaluate(
+    problem: Problem,
+    code: string,
+    lang: SupportedLang,
+    mode: 'run' | 'submit'
+  ): Promise<RunResult> {
+    // Abstract any legacy standard I/O and inject driver harness via Babel
+    const cleanUserCode = abstractUserFacingCode(code, lang)
+    const executableCode = injectHarnessWithBabel(cleanUserCode, lang, problem)
+
+    if (typeof window !== 'undefined' && window.ipcRenderer?.invoke) {
+      try {
+        const res = await window.ipcRenderer.invoke('code-test:evaluate', {
+          problemId: problem.id,
+          code: executableCode,
+          lang,
+          mode,
+          problem,
+        })
+
+        return {
+          status: res.status === 'passed' ? 'success' : 'error',
+          verdict: res.verdict,
+          runtime: res.runtime,
+          memory: res.memory,
+          totalCases: res.totalCases,
+          passedCases: res.passedCases,
+          failedCaseIndex: res.failedCase?.caseIndex,
+          expected: res.failedCase?.expected,
+          actual: res.failedCase?.actual,
+          compileError: res.compileError,
+          output: res.output,
+        }
+      } catch (err: any) {
+        return {
+          status: 'error',
+          verdict: 'Internal Error',
+          output: `IPC communication error: ${err?.message ?? err}`,
+        }
+      }
+    }
+
+    // Fallback for standalone browser preview mode (when running outside Electron)
+    console.warn('[ChallengeService] Electron IPC not detected. Running in web preview fallback mode.')
+    await new Promise((r) => setTimeout(r, 400))
     return {
       status: 'success',
-      runtime: `${Math.floor(Math.random() * 20 + 35)} ms`,
-      memory: `${(Math.random() * 2 + 42).toFixed(1)} MB`,
-      output: sampleOutput,
+      verdict: 'Accepted',
+      runtime: '15 ms',
+      memory: '3.5 MB',
+      output: 'Executed in browser preview fallback mode.',
     }
   },
 
   /**
-   * Simulates submitting solution for full evaluation
-   */
-  async submitCode(problem: Problem, code: string): Promise<RunResult> {
-    void problem
-    void code
-    await new Promise((resolve) => setTimeout(resolve, 850))
-    return {
-      status: 'success',
-      runtime: `${Math.floor(Math.random() * 15 + 28)} ms`,
-      memory: `${(Math.random() * 2 + 41).toFixed(1)} MB`,
-      output: 'Accepted on 54 / 54 testcases',
-    }
-  },
-
-  /**
-   * Resolves adjacent problems for pagination
+   * Resolves adjacent problems for pagination.
    */
   getNeighborProblems(problems: Problem[], currentId: number) {
     const idx = problems.findIndex((p) => p.id === currentId)
@@ -46,7 +98,7 @@ export const challengeService = {
   },
 
   /**
-   * Returns consistent badge classes for difficulties
+   * Returns consistent badge classes for difficulties.
    */
   getDifficultyBadge(diff: Difficulty) {
     switch (diff) {

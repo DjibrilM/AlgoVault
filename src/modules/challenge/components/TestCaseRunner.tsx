@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle2,
+  XCircle,
   Terminal,
   Clock,
   Cpu,
@@ -39,7 +40,10 @@ export function TestCaseRunner({
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<'testcase' | 'result'>('testcase')
 
-  const currentCase = problem.testCases[selectedCaseIdx] || problem.testCases[0]
+  // Filter for visible test cases in the case selector
+  const visibleCases = (problem.testCases || []).filter((tc) => !tc.hidden)
+  const displayCases = visibleCases.length > 0 ? visibleCases : (problem.testCases || [])
+  const currentCase = displayCases[selectedCaseIdx] || displayCases[0]
 
   return (
     <div className="h-full flex flex-col bg-[#171717] overflow-hidden">
@@ -93,12 +97,16 @@ export function TestCaseRunner({
             <span className="relative z-10 flex items-center gap-1.5">
               <Terminal
                 className={cn('h-3.5 w-3.5', {
-                  'fill-current text-[#16A34A]': activeTab === 'result',
+                  'fill-current text-[#16A34A]': activeTab === 'result' && runResult.status !== 'error',
+                  'text-[#EF4444]': activeTab === 'result' && runResult.status === 'error',
                 })}
               />
               <span>Console Output</span>
               {runResult.status === 'success' && (
                 <span className="h-1.5 w-1.5 rounded-full bg-[#16A34A]" />
+              )}
+              {runResult.status === 'error' && (
+                <span className="h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
               )}
             </span>
           </button>
@@ -132,7 +140,7 @@ export function TestCaseRunner({
                 <div className="space-y-3">
                   {/* Case Selection Pills with animated active state */}
                   <div className="flex items-center gap-1.5 select-none">
-                    {problem.testCases.map((tc, idx) => {
+                    {displayCases.map((tc, idx) => {
                       const isSelectedCase = selectedCaseIdx === idx
                       return (
                         <button
@@ -198,7 +206,7 @@ export function TestCaseRunner({
                   {runResult.status === 'running' && (
                     <div className="flex items-center gap-2 text-[#6366F1] py-4 justify-center">
                       <div className="h-3.5 w-3.5 border-2 border-[#6366F1] border-t-transparent rounded-full animate-spin" />
-                      <span>Executing in isolated sandbox...</span>
+                      <span>Executing in isolated sandbox micro-VM...</span>
                     </div>
                   )}
 
@@ -206,7 +214,7 @@ export function TestCaseRunner({
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 text-[#16A34A] font-semibold">
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>Execution Finished Successfully</span>
+                        <span>{runResult.verdict ? `${runResult.verdict} - All Tests Passed` : 'Execution Finished Successfully'}</span>
                       </div>
 
                       <div className="flex items-center gap-4 text-[11px] text-[#A3A3A3]">
@@ -222,13 +230,77 @@ export function TestCaseRunner({
                             <span>Memory: <strong className="text-white">{runResult.memory}</strong></span>
                           </div>
                         )}
+                        {runResult.totalCases && (
+                          <div className="flex items-center gap-1 text-[#10B981]">
+                            <span>Passed: <strong>{runResult.passedCases}/{runResult.totalCases}</strong></span>
+                          </div>
+                        )}
                       </div>
 
                       <div>
                         <div className="text-[10px] uppercase font-bold text-[#737373] mb-1">
                           Stdout / Output
                         </div>
-                        <div className="p-2.5 rounded-lg bg-[#202020] border border-[#2E2E2E] text-white">
+                        <div className="p-2.5 rounded-lg bg-[#202020] border border-[#2E2E2E] text-white whitespace-pre-wrap font-mono">
+                          {runResult.output}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {runResult.status === 'error' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[#EF4444] font-semibold">
+                        <XCircle className="h-4 w-4" />
+                        <span>{runResult.verdict || 'Execution Error'}</span>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-[11px] text-[#A3A3A3]">
+                        {runResult.runtime && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-[#737373]" />
+                            <span>Runtime: <strong className="text-white">{runResult.runtime}</strong></span>
+                          </div>
+                        )}
+                        {runResult.memory && (
+                          <div className="flex items-center gap-1">
+                            <Cpu className="h-3 w-3 text-[#737373]" />
+                            <span>Memory: <strong className="text-white">{runResult.memory}</strong></span>
+                          </div>
+                        )}
+                        {runResult.failedCaseIndex && (
+                          <div className="flex items-center gap-1 text-[#EF4444]">
+                            <span>Failed on Case: <strong>#{runResult.failedCaseIndex}</strong></span>
+                          </div>
+                        )}
+                      </div>
+
+                      {runResult.expected && runResult.actual && (
+                        <div className="grid grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-[#10B981] mb-1">
+                              Expected Output
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-[#202020] border border-[#10B981]/30 text-[#10B981] whitespace-pre-wrap font-mono">
+                              {runResult.expected}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-[#EF4444] mb-1">
+                              Your Output
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-[#202020] border border-[#EF4444]/30 text-[#EF4444] whitespace-pre-wrap font-mono">
+                              {runResult.actual || '(empty)'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-[#737373] mb-1">
+                          Diagnostic Details / Stderr
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-[#202020] border border-[#EF4444]/30 text-[#FCA5A5] whitespace-pre-wrap font-mono">
                           {runResult.output}
                         </div>
                       </div>

@@ -6,7 +6,22 @@ export interface TestCase {
   id: number
   input: string
   expected: string
+  /** If true, hidden from initial display and tested during full evaluation / submit */
+  hidden?: boolean
+  /** Raw standard input sent to the program process */
+  stdin?: string
+  /** Optional explanation of the test case */
+  explanation?: string
 }
+
+export type Verdict =
+  | 'Accepted'
+  | 'Wrong Answer'
+  | 'Time Limit Exceeded'
+  | 'Memory Limit Exceeded'
+  | 'Runtime Error'
+  | 'Compile Error'
+  | 'Internal Error'
 
 export interface ProblemExample {
   id: number
@@ -55,4 +70,11 @@ export interface RunResult {
   runtime?: string
   memory?: string
   output?: string
+  verdict?: Verdict
+  totalCases?: number
+  passedCases?: number
+  failedCaseIndex?: number
+  expected?: string
+  actual?: string
+  compileError?: string
 }

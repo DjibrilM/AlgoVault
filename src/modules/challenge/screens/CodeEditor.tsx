@@ -29,6 +29,7 @@ import {
 import '../services/monacoSetup'
 import { LANGUAGES } from '../components/LanguageIcons'
 import { CodeEditorProps, SupportedLang } from '../types'
+import { abstractUserFacingCode, containsLegacyIO } from '../utils/codeAbstractor'
 import {
   currentProblemAtom,
   editorCodeAtom,
@@ -67,21 +68,30 @@ export function CodeEditor({
   const onChangeCode = propOnChangeCode ?? setGlobalCode
   const isRunning = propIsRunning ?? globalIsRunning
 
-  const [internalLang, setInternalLang] = useState<SupportedLang>('typescript')
-  const selectedLang: SupportedLang = externalLang ?? (propProblem ? internalLang : globalLang)
-  const setSelectedLang = onSelectLang ?? (propProblem ? setInternalLang : setGlobalLang)
+  const selectedLang: SupportedLang = externalLang ?? globalLang
+  const setSelectedLang = onSelectLang ?? setGlobalLang
 
   const [copied, setCopied] = useState(false)
 
-  // When problem or language changes, load default template if empty
+  // When problem or language changes, load default template abstracted of legacy I/O
   useEffect(() => {
     const template = problem.codeTemplates[selectedLang] || ''
-    onChangeCode(template)
+    onChangeCode(abstractUserFacingCode(template, selectedLang))
   }, [problem.id, problem.codeTemplates, selectedLang, onChangeCode])
+
+  // Abstract legacy boilerplate at the rendering level before reaching the editor UI
+  useEffect(() => {
+    if (containsLegacyIO(code)) {
+      const sanitized = abstractUserFacingCode(code, selectedLang)
+      if (sanitized !== code) {
+        onChangeCode(sanitized)
+      }
+    }
+  }, [code, selectedLang, onChangeCode])
 
   const handleReset = () => {
     const template = problem.codeTemplates[selectedLang] || ''
-    onChangeCode(template)
+    onChangeCode(abstractUserFacingCode(template, selectedLang))
   }
 
   const handleCopy = async () => {
@@ -219,7 +229,7 @@ export function CodeEditor({
           path={`problem-${problem.id}/${currentLangConfig.fileName}`}
           language={selectedLang}
           theme="vs-dark"
-          value={code}
+          value={abstractUserFacingCode(code, selectedLang)}
           onChange={(value) => onChangeCode(value ?? '')}
           onMount={(editorInstance, monacoInstance) => {
             if (onRun) {

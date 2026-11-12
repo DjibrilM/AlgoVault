@@ -20,7 +20,7 @@ export const problemsAtom = atom<Problem[]>(INITIAL_PROBLEMS)
 export const categoriesAtom = atom<AICategory[]>(INITIAL_AI_CATEGORIES)
 export const marathonStepsAtom = atom<MarathonStep[]>(INITIAL_MARATHON_STEPS)
 export const activeCategoryAtom = atom<ActiveCategoryState | null>(null)
-export const selectedProblemIdAtom = atom<number>(1)
+export const selectedProblemIdAtom = atom<number>(100)
 export const isSidebarOpenAtom = atom<boolean>(true)
 
 // Helper pure function

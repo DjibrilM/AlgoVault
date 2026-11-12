@@ -9,6 +9,7 @@ import {
   runResultAtom,
   isRunningAtom,
   activeProblemsAtom,
+  selectedLangAtom,
 } from '@/shared/store'
 import { challengeService } from '../services/challengeService'
 
@@ -50,6 +51,7 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
   const [globalCode, setGlobalCode] = useAtom(editorCodeAtom)
   const [globalIsRunning, setGlobalIsRunning] = useAtom(isRunningAtom)
   const [globalRunResult, setGlobalRunResult] = useAtom(runResultAtom)
+  const [globalLang, setGlobalLang] = useAtom(selectedLangAtom)
 
   // Local state fallbacks if props are provided
   const [localCode, setLocalCode] = useState<string>('')
@@ -92,7 +94,7 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
     setIsRunning(true)
     setRunResult({ status: 'running' })
     try {
-      const result = await challengeService.runCode(currentProblem, code)
+      const result = await challengeService.runCode(currentProblem, code, globalLang)
       setRunResult(result)
     } finally {
       setIsRunning(false)
@@ -103,9 +105,11 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
     setIsRunning(true)
     setRunResult({ status: 'running' })
     try {
-      const result = await challengeService.submitCode(currentProblem, code)
+      const result = await challengeService.submitCode(currentProblem, code, globalLang)
       setRunResult(result)
-      onSolveProblem?.(selectedProblemId)
+      if (result.status === 'success') {
+        onSolveProblem?.(selectedProblemId)
+      }
     } finally {
       setIsRunning(false)
     }
@@ -114,6 +118,8 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
   return {
     code,
     setCode,
+    selectedLang: globalLang,
+    setSelectedLang: setGlobalLang,
     isRunning,
     runResult,
     currentProblem,

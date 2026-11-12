@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { MainModule } from './main.module.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -23,6 +24,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
+let mainModule: MainModule | null = null
 
 function createWindow() {
   win = new BrowserWindow({
@@ -65,4 +67,14 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.on('before-quit', async () => {
+  if (mainModule) {
+    await mainModule.onModuleDestroy()
+    mainModule = null
+  }
+})
+
+app.whenReady().then(async () => {
+  mainModule = await MainModule.bootstrap({ ipcMain })
+  createWindow()
+})
