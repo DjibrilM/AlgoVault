@@ -1,4 +1,4 @@
-import { Problem } from '../../types/problem'
+import type { Problem } from '../../types/problem.ts'
 
 export const MEDIUM_HARD_PROBLEMS: Problem[] = [
   {
@@ -104,7 +104,7 @@ public:
     category: 'Data Structures',
     acceptance: '42.1%',
     solved: false,
-    starred: true,
+    starred: false,
     tags: ['Hash Table', 'Linked List', 'Design'],
     description: `Design a data structure that follows the constraints of a **Least Recently Used (LRU) cache** with capacity $C$.
 
@@ -181,7 +181,7 @@ public:
     category: 'Dynamic Programming',
     acceptance: '43.2%',
     solved: false,
-    starred: true,
+    starred: false,
     tags: ['Array', 'Dynamic Programming', 'Breadth-First Search'],
     description: `You are given an integer array \`coins\` representing coins of different denominations $c_1, c_2, \\dots, c_k$ and an integer \`amount\` $A$ representing a total amount of money.
 

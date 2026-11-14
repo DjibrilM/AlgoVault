@@ -64,6 +64,7 @@ export function containsLegacyIO(code: string): boolean {
  */
 export function abstractUserFacingCode(code: string, lang: SupportedLang = 'typescript'): string {
   if (!code || typeof code !== 'string') return ''
+  if (code.includes('// --- Injected Driver Harness')) return code
 
   // 1. Detect if this is Problem 100 legacy boilerplate (or variant thereof)
   const isLegacyProblem100 =

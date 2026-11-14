@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { fileURLToPath } from 'node:url'
+import fs from 'node:fs'
 import path from 'node:path'
 import { MainModule } from './main.module.ts'
 
@@ -26,11 +27,25 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 let mainModule: MainModule | null = null
 
+app.setName('AlgoVault')
+
+function resolveAppIconPath(): string {
+  const candidates = [
+    path.join(process.env.VITE_PUBLIC, 'icon.png'),
+    path.join(process.env.APP_ROOT, 'build', 'icon.png'),
+    path.join(process.env.APP_ROOT, 'public', 'icon.png'),
+  ]
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
+}
+
 function createWindow() {
+  const iconPath = resolveAppIconPath()
   win = new BrowserWindow({
+    title: 'AlgoVault',
+    backgroundColor: '#141414',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 15 },
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },
@@ -75,6 +90,13 @@ app.on('before-quit', async () => {
 })
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin' && app.dock) {
+    const dockIcon = nativeImage.createFromPath(resolveAppIconPath())
+    if (!dockIcon.isEmpty()) {
+      app.dock.setIcon(dockIcon)
+    }
+  }
+
   mainModule = await MainModule.bootstrap({ ipcMain })
   createWindow()
 })

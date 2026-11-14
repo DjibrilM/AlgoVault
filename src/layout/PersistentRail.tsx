@@ -1,15 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
+import { Bookmark } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Home as HomeSolid,
   Settings as SettingsSolid,
-  Clock as ClockSolid,
   File as FileSolid,
 } from '@ui/icons/solid'
 import {
   Home as HomeLinear,
   Settings as SettingsLinear,
-  Clock as ClockLinear,
   File as FileLinear,
 } from '@ui/icons/linear'
 import { NavSection } from './types'
@@ -26,24 +25,29 @@ export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) 
       label: 'Home',
       SolidIcon: HomeSolid,
       LinearIcon: HomeLinear,
+      activeColorClass: 'text-[#F59E0B]',
     },
     {
       id: 'settings' as NavSection,
       label: 'Settings',
       SolidIcon: SettingsSolid,
       LinearIcon: SettingsLinear,
+      activeColorClass: 'text-[#F43F5E]',
     },
     {
-      id: 'history' as NavSection,
-      label: 'History',
-      SolidIcon: ClockSolid,
-      LinearIcon: ClockLinear,
+      id: 'favorites' as NavSection,
+      label: 'Favorites',
+      SolidIcon: Bookmark,
+      LinearIcon: Bookmark,
+      activeColorClass: 'text-[#F59E0B]',
+      fillOnActive: true,
     },
     {
       id: 'todos' as NavSection,
       label: 'To-dos',
       SolidIcon: FileSolid,
       LinearIcon: FileLinear,
+      activeColorClass: 'text-[#10B981]',
     },
   ]
 
@@ -118,20 +122,30 @@ export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) 
                 ref={(el) => {
                   iconRefs.current[item.id] = el
                 }}
-                className={cn('p-2 rounded-xl transition-colors', {
-                  'text-white': isActive,
-                  'group-hover:bg-[#1F1F1F]/60 text-[#A3A3A3] group-hover:text-white': !isActive,
-                })}
+                className={cn(
+                  'p-2 rounded-xl transition-colors',
+                  isActive
+                    ? item.activeColorClass
+                    : 'group-hover:bg-[#1F1F1F]/60 text-[#A3A3A3] group-hover:text-white'
+                )}
               >
-                <Icon size={22} className="transition-transform group-hover:scale-105" />
+                <Icon
+                  size={22}
+                  className={cn('transition-transform group-hover:scale-105', {
+                    'fill-current': isActive && item.fillOnActive,
+                  })}
+                />
               </div>
 
               {/* Text Label */}
               <span
-                className={cn('text-[11px] font-medium tracking-tight transition-colors', {
-                  'text-white font-semibold': isActive,
-                  'text-[#A3A3A3]': !isActive,
-                })}
+                className={cn(
+                  'text-[11px] font-medium tracking-tight transition-colors whitespace-nowrap',
+                  {
+                    'text-white font-semibold': isActive,
+                    'text-[#A3A3A3]': !isActive,
+                  }
+                )}
               >
                 {item.label}
               </span>

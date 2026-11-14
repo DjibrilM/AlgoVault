@@ -9,7 +9,7 @@ import {
   problemsAtom,
   selectCategoryAtom,
   viewAllMarathonsAtom,
-  generateCategoryAtom,
+  openAiStudioAtom,
 } from '@/shared/store'
 import { MarathonTrack } from '@/shared/types/problem'
 
@@ -20,7 +20,7 @@ export function HomeScreen({
   onSelectCategory: propOnSelectCategory,
   onSelectMarathon: propOnSelectMarathon,
   onViewAllMarathons: propOnViewAllMarathons,
-  onGenerateCategory: propOnGenerateCategory,
+  onOpenAiStudio: propOnOpenAiStudio,
 }: HomeScreenProps) {
   // Global Jotai fallbacks
   const globalCategories = useAtomValue(categoriesAtom)
@@ -28,7 +28,7 @@ export function HomeScreen({
   const globalProblems = useAtomValue(problemsAtom)
   const globalSelectCategory = useSetAtom(selectCategoryAtom)
   const globalViewAllMarathons = useSetAtom(viewAllMarathonsAtom)
-  const globalGenerateCategory = useSetAtom(generateCategoryAtom)
+  const globalOpenAiStudio = useSetAtom(openAiStudioAtom)
 
   const categories = propCategories ?? globalCategories
   const marathons = propMarathons ?? globalMarathons
@@ -58,11 +58,11 @@ export function HomeScreen({
     }
   }
 
-  const handleGenerate = (prompt: string) => {
-    if (propOnGenerateCategory) {
-      propOnGenerateCategory(prompt)
+  const handleOpenStudio = () => {
+    if (propOnOpenAiStudio) {
+      propOnOpenAiStudio()
     } else {
-      globalGenerateCategory(prompt)
+      globalOpenAiStudio()
     }
   }
 
@@ -79,7 +79,7 @@ export function HomeScreen({
           </p>
         </div>
 
-        <AiGeneratorBar onSubmit={handleGenerate} />
+        <AiGeneratorBar onOpenStudio={handleOpenStudio} />
       </div>
 
       <div className="max-w-5xl mx-auto w-full space-y-8">

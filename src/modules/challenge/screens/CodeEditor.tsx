@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import {
   Play,
@@ -10,7 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react'
-import { useAtom, useAtomValue } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -34,8 +34,10 @@ import {
   currentProblemAtom,
   editorCodeAtom,
   isRunningAtom,
+  problemsAtom,
   selectedLangAtom,
 } from '@/shared/store'
+import { useSaveChallengeProgressMutation } from '@/shared/hooks/useWorkspaceQueries'
 
 // Export all dropdown menu components so they remain readily available
 export {
@@ -62,6 +64,9 @@ export function CodeEditor({
   const [globalCode, setGlobalCode] = useAtom(editorCodeAtom)
   const globalIsRunning = useAtomValue(isRunningAtom)
   const [globalLang, setGlobalLang] = useAtom(selectedLangAtom)
+  const setProblems = useSetAtom(problemsAtom)
+  const saveProgressMutation = useSaveChallengeProgressMutation()
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const problem = propProblem ?? globalProblem
   const code = propCode ?? globalCode
@@ -73,11 +78,37 @@ export function CodeEditor({
 
   const [copied, setCopied] = useState(false)
 
-  // When problem or language changes, load default template abstracted of legacy I/O
+  // When problem or language changes, load saved user solution (if any) or starter template
   useEffect(() => {
-    const template = problem.codeTemplates[selectedLang] || ''
-    onChangeCode(abstractUserFacingCode(template, selectedLang))
+    const initialSource =
+      problem.solution && problem.solution.trim().length > 0
+        ? problem.solution
+        : problem.codeTemplates[selectedLang] || ''
+    const nextCode = abstractUserFacingCode(initialSource, selectedLang)
+    if (nextCode !== code) {
+      onChangeCode(nextCode)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [problem.id, problem.codeTemplates, selectedLang, onChangeCode])
+
+  // Debounce-save code edits into SQLite & local problemsAtom
+  useEffect(() => {
+    if (!problem.id) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      setProblems((prev) =>
+        prev.map((p) => (p.id === problem.id ? { ...p, solution: code } : p))
+      )
+      saveProgressMutation.mutate({
+        challengeId: problem.id,
+        solution: code,
+      })
+    }, 500)
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [code, problem.id, setProblems, saveProgressMutation.mutate])
 
   // Abstract legacy boilerplate at the rendering level before reaching the editor UI
   useEffect(() => {

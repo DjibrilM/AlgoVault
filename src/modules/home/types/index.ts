@@ -14,6 +14,7 @@ export interface HomeScreenProps {
   onSelectMarathon?: (marathon: MarathonTrack) => void
   onViewAllMarathons?: () => void
   onGenerateCategory?: (prompt: string) => void
+  onOpenAiStudio?: () => void
 }
 
 export interface MarathonCardProps {
@@ -34,6 +35,6 @@ export interface TopicCardProps {
 }
 
 export interface AiGeneratorBarProps {
-  onSubmit: (prompt: string) => void
+  onOpenStudio: () => void
 }
 

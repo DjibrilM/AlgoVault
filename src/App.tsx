@@ -1,8 +1,8 @@
-import { AnimatePresence, motion } from 'framer-motion'
 import { AppLayout } from '@layout'
 import { ChallengeSidebar, ChallengeWorkspace } from '@modules/challenge'
 import { HomeScreen, MarathonListScreen, CategoryProblemsScreen } from '@modules/home'
-import { HistoryScreen } from '@modules/history'
+import { QuestionsFactoryScreen } from './modules/questions-factory'
+import { FavoritesScreen } from './modules/favorites'
 import { SettingsScreen } from '@modules/settings'
 import { TodosScreen } from '@modules/todos'
 import { useAppWorkspace } from './app/useAppWorkspace'
@@ -14,6 +14,7 @@ export function App() {
     categories,
     marathons,
     isViewingAllMarathons,
+    isViewingAiStudio,
     isSolvingChallenge,
     activeCategory,
     activeProblems,
@@ -27,7 +28,7 @@ export function App() {
     handleOpenChallenge,
     handleBackToCategoryList,
     handleViewAllMarathons,
-    handleGenerateCategory,
+    handleOpenAiStudio,
     handleNavChange,
     returnHome,
     closeCategory,
@@ -36,7 +37,12 @@ export function App() {
   const renderScene = () => {
     switch (activeNav) {
       case 'home':
-        // 1. All Marathons dedicated screen
+        // 1. Conversational Questions Factory screen
+        if (isViewingAiStudio) {
+          return <QuestionsFactoryScreen onBackToHome={returnHome} />
+        }
+
+        // 2. All Marathons dedicated screen
         if (isViewingAllMarathons) {
           return (
             <MarathonListScreen
@@ -83,15 +89,15 @@ export function App() {
             onSelectCategory={handleSelectCategory}
             onSelectMarathon={(marathon) => handleSelectCategory(marathon.title, true)}
             onViewAllMarathons={handleViewAllMarathons}
-            onGenerateCategory={handleGenerateCategory}
+            onOpenAiStudio={handleOpenAiStudio}
           />
         )
 
       case 'settings':
         return <SettingsScreen onReturnHome={returnHome} />
 
-      case 'history':
-        return <HistoryScreen onReturnHome={returnHome} />
+      case 'favorites':
+        return <FavoritesScreen onReturnHome={returnHome} />
 
       case 'todos':
         return <TodosScreen onReturnHome={returnHome} />
@@ -115,35 +121,13 @@ export function App() {
       />
     ) : null
 
-  const sceneKey =
-    activeNav !== 'home'
-      ? activeNav
-      : isViewingAllMarathons
-        ? 'marathons'
-        : activeCategory
-          ? isSolvingChallenge
-            ? `solve:${activeCategory.name}`
-            : `category:${activeCategory.name}`
-          : 'home'
-
   return (
     <AppLayout
       activeNav={activeNav}
       onNavChange={handleNavChange}
       secondarySidebar={secondarySidebar}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={sceneKey}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -3 }}
-          transition={{ duration: 0.09, ease: [0.22, 1, 0.36, 1] }}
-          className="h-full w-full flex flex-col overflow-hidden"
-        >
-          {renderScene()}
-        </motion.div>
-      </AnimatePresence>
+      {renderScene()}
     </AppLayout>
   )
 }

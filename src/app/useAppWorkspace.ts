@@ -1,14 +1,18 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { NavSection } from '@layout'
 import { useKeyboardShortcut } from '@shared'
+import { useWorkspaceQuery } from '@/shared/hooks/useWorkspaceQueries'
 import {
   activeNavAtom,
   problemsAtom,
   categoriesAtom,
+  submissionsAtom,
+  workspaceLoadedAtom,
   marathonStepsAtom,
   marathonsAtom,
   isViewingAllMarathonsAtom,
+  isViewingAiStudioAtom,
   isSolvingChallengeAtom,
   activeCategoryAtom,
   activeProblemsAtom,
@@ -22,6 +26,7 @@ import {
   closeCategoryAtom,
   navigateSectionAtom,
   viewAllMarathonsAtom,
+  openAiStudioAtom,
   generateCategoryAtom,
 } from '@/shared/store'
 
@@ -36,6 +41,7 @@ export function useAppWorkspace() {
   const [marathonSteps] = useAtom(marathonStepsAtom)
   const [marathons] = useAtom(marathonsAtom)
   const [isViewingAllMarathons] = useAtom(isViewingAllMarathonsAtom)
+  const [isViewingAiStudio] = useAtom(isViewingAiStudioAtom)
   const [isSolvingChallenge] = useAtom(isSolvingChallengeAtom)
   const [activeCategory] = useAtom(activeCategoryAtom)
   const activeProblems = useAtomValue(activeProblemsAtom)
@@ -50,7 +56,36 @@ export function useAppWorkspace() {
   const closeCategoryAction = useSetAtom(closeCategoryAtom)
   const navigateSectionAction = useSetAtom(navigateSectionAtom)
   const viewAllMarathonsAction = useSetAtom(viewAllMarathonsAtom)
+  const openAiStudioAction = useSetAtom(openAiStudioAtom)
   const generateCategory = useSetAtom(generateCategoryAtom)
+  const setCategories = useSetAtom(categoriesAtom)
+  const setProblems = useSetAtom(problemsAtom)
+  const setSubmissions = useSetAtom(submissionsAtom)
+  const setWorkspaceLoaded = useSetAtom(workspaceLoadedAtom)
+  const { data: workspaceData } = useWorkspaceQuery()
+
+  useEffect(() => {
+    if (!workspaceData) return
+    setCategories(workspaceData.categories)
+    setProblems(workspaceData.problems)
+    setSubmissions(workspaceData.submissions)
+    setWorkspaceLoaded(true)
+
+    if (
+      workspaceData.problems.length > 0 &&
+      !workspaceData.problems.some((p) => p.id === selectedProblemId)
+    ) {
+      setSelectedProblemId(workspaceData.problems[0].id)
+    }
+  }, [
+    workspaceData,
+    selectedProblemId,
+    setCategories,
+    setProblems,
+    setSubmissions,
+    setWorkspaceLoaded,
+    setSelectedProblemId,
+  ])
 
   const toggleSidebar = useCallback(() => {
     toggleSidebarAction()
@@ -78,6 +113,10 @@ export function useAppWorkspace() {
     viewAllMarathonsAction()
   }
 
+  const handleOpenAiStudio = () => {
+    openAiStudioAction()
+  }
+
   const handleGenerateCategory = (prompt: string) => {
     generateCategory(prompt)
   }
@@ -101,6 +140,7 @@ export function useAppWorkspace() {
     marathonSteps,
     marathons,
     isViewingAllMarathons,
+    isViewingAiStudio,
     isSolvingChallenge,
     activeCategory,
     activeProblems,
@@ -114,6 +154,7 @@ export function useAppWorkspace() {
     handleOpenChallenge,
     handleBackToCategoryList,
     handleViewAllMarathons,
+    handleOpenAiStudio,
     handleGenerateCategory,
     handleNavChange,
     returnHome,

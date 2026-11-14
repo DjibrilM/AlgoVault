@@ -9,7 +9,16 @@
  */
 
 import type { IpcMain } from 'electron'
-import { CodeTestModule, type CodeTestModuleOptions } from './modules/code-test/index.ts'
+import {
+  CodeTestModule,
+  CODE_TEST_ENTITIES,
+  seedDefaultCategories,
+  seedDefaultChallenges,
+  migrateSubmissionsNonUnique,
+  migrateChallengesCategoryNonUnique,
+  type CodeTestModuleOptions,
+} from './modules/code-test/index.ts'
+import { DatabaseModule, type DatabaseModuleOptions } from './modules/database/index.ts'
 import type { OnModuleInit, OnModuleDestroy } from './modules/code-test/common/lifecycle.ts'
 
 export interface MainModuleOptions {
@@ -17,19 +26,28 @@ export interface MainModuleOptions {
   ipcMain?: IpcMain
   /** Configuration overrides specifically for CodeTestModule */
   codeTest?: CodeTestModuleOptions
+  /** Configuration overrides specifically for DatabaseModule */
+  database?: DatabaseModuleOptions
 }
 
 /**
  * NestJS Root Module.
  *
  * Encapsulates:
- * - `imports`: [CodeTestModule]
+ * - `imports`: [DatabaseModule, CodeTestModule]
  */
 export class MainModule implements OnModuleInit, OnModuleDestroy {
+  /** Core Module: TypeORM SQLite persistence */
+  readonly databaseModule: DatabaseModule
   /** Feature Module: Code execution and SandboxVm management */
   readonly codeTestModule: CodeTestModule
 
   constructor(options: MainModuleOptions = {}) {
+    this.databaseModule = DatabaseModule.forRoot({
+      entities: [...CODE_TEST_ENTITIES],
+      ...options.database,
+    })
+
     // Imports: instantiate feature modules with dependency options
     this.codeTestModule = new CodeTestModule({
       ipcMain: options.ipcMain,
@@ -56,6 +74,13 @@ export class MainModule implements OnModuleInit, OnModuleDestroy {
    * Initializes all imported feature modules.
    */
   async onModuleInit(): Promise<void> {
+    await this.databaseModule.onModuleInit()
+    const dataSource = this.databaseModule.getDataSource()
+    await migrateSubmissionsNonUnique(dataSource)
+    await migrateChallengesCategoryNonUnique(dataSource)
+    await seedDefaultCategories(dataSource)
+    await seedDefaultChallenges(dataSource)
+    this.codeTestModule.service.setDataSource(dataSource)
     await this.codeTestModule.onModuleInit()
   }
 
@@ -65,6 +90,7 @@ export class MainModule implements OnModuleInit, OnModuleDestroy {
    */
   async onModuleDestroy(): Promise<void> {
     await this.codeTestModule.onModuleDestroy()
+    await this.databaseModule.onModuleDestroy()
   }
 }
 

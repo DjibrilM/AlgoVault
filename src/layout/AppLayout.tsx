@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { TopHeader } from './TopHeader'
 import { PersistentRail } from './PersistentRail'
 import { AppLayoutProps, NavSection } from './types'
@@ -33,21 +32,13 @@ export function AppLayout({
         {/* Floating Rounded Canvas Container */}
         <div className="flex-1 flex ml-2.5 rounded-2xl bg-[#1A1A1A] border border-[#262626] overflow-hidden shadow-2xl">
           {/* On-Demand Secondary Side Menu with its rich #181818 background */}
-          <AnimatePresence initial={false}>
-            {hasSecondary && (
-              <motion.aside
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 240, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
-                className="w-60 bg-[#181818] border-r border-[#262626] flex flex-col shrink-0 overflow-hidden z-10"
-              >
-                <div className="w-60 h-full flex flex-col overflow-y-auto">
-                  {secondarySidebar}
-                </div>
-              </motion.aside>
-            )}
-          </AnimatePresence>
+          {hasSecondary && (
+            <aside className="w-60 bg-[#181818] border-r border-[#262626] flex flex-col shrink-0 overflow-hidden z-10">
+              <div className="w-60 h-full flex flex-col overflow-y-auto">
+                {secondarySidebar}
+              </div>
+            </aside>
+          )}
 
           {/* Screen Canvas Area */}
           <main className="flex-1 bg-[#1A1A1A] flex flex-col overflow-hidden relative">

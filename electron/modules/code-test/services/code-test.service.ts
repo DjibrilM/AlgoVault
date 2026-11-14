@@ -3,11 +3,19 @@
  * @description NestJS-style Provider handling SandboxVm lifecycle and challenge code evaluation.
  */
 
+import type { DataSource } from 'typeorm'
 import { SandboxVm, resolveDefaultAssetsDir } from '../../engine-runner/sandboxVm.ts'
 import { EASY_PROBLEMS } from '../../../../src/shared/data/problems/easyProblems.ts'
 import { injectHarnessWithBabel, hasStandardIO } from '../../../../src/modules/challenge/utils/babelInjector.ts'
 import { abstractUserFacingCode } from '../../../../src/modules/challenge/utils/codeAbstractor.ts'
 import { TypeCheckerService, type ITypeCheckerService } from './type-checker.service.ts'
+import {
+  CategoryEntity,
+  ChallengeEntity,
+  SubmissionEntity,
+  FavoriteEntity,
+  FactoryConversationEntity,
+} from '../entities/index.ts'
 import type { Problem } from '../../../../src/shared/types/problem.ts'
 import type { OnModuleDestroy } from '../common/lifecycle.ts'
 import type {
@@ -19,6 +27,8 @@ import type {
   EvaluateCodeDto,
   EvaluationResultDto,
   TestCaseResultDto,
+  SaveFactoryConversationDto,
+  PaginatedFactoryConversationsDto,
 } from '../types/index.ts'
 
 /**
@@ -60,6 +70,7 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
   private readonly assetsDir: string
   private readonly problemCatalog = new Map<number, Problem>()
   private readonly typeChecker: ITypeCheckerService
+  private dataSource: DataSource | null = null
 
   constructor(options: CodeTestServiceOptions = {}) {
     this.options = options
@@ -76,6 +87,13 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         console.error('[CodeTestService] Failed to auto-start SandboxVm:', err)
       })
     }
+  }
+
+  /**
+   * Attaches the TypeORM DataSource so evaluations and workspace queries persist to SQLite.
+   */
+  setDataSource(dataSource: DataSource): void {
+    this.dataSource = dataSource
   }
 
   /**
@@ -211,8 +229,39 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         }
       }
 
-      // 1. Resolve target problem from catalog or payload override
-      const problem = dto.problem ?? this.findProblemById(dto.problemId)
+      // 1. Resolve target problem from DB, payload override, or in-memory catalog
+      let problem = dto.problem ?? this.findProblemById(dto.problemId)
+      if (!problem && this.dataSource) {
+        const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+        const record = await challengeRepo.findOne({
+          where: { id: dto.problemId },
+          relations: { category: true },
+        })
+        if (record) {
+          problem = {
+            id: record.id,
+            slug: record.slug || `challenge-${record.id}`,
+            title: record.title,
+            difficulty: record.difficulty,
+            category: record.category?.title ?? 'General',
+            acceptance: record.acceptance || '50.0%',
+            solved: record.solved,
+            starred: record.starred,
+            description: record.description,
+            examples: (record.examples ?? []) as unknown as Problem['examples'],
+            constraints: record.constraints ?? [],
+            hints: record.hints ?? [],
+            tags: record.tags ?? [],
+            codeTemplates: (record.initialSolutions ?? {
+              typescript: record.initialSolution,
+              python: '',
+              javascript: '',
+              cpp: '',
+            }) as Problem['codeTemplates'],
+            testCases: (record.testCases ?? []) as unknown as Problem['testCases'],
+          }
+        }
+      }
       if (!problem) {
         return {
           status: 'error',
@@ -257,7 +306,7 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         const typeErrors = this.typeChecker.checkTypeScript(cleanCode)
         if (typeErrors.length > 0) {
           const errorLog = typeErrors.join('\n')
-          return {
+          const compileErrResult: EvaluationResultDto = {
             status: 'error',
             verdict: 'Compile Error',
             passedCases: 0,
@@ -270,6 +319,10 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
             output: errorLog,
             testCases: [],
           }
+          if (isSubmit) {
+            await this.persistSubmission(dto.problemId, dto.lang, cleanCode, compileErrResult)
+          }
+          return compileErrResult
         }
       }
 
@@ -300,7 +353,7 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
       // 5. Evaluate Compiler Error (for C, C++)
       if (vmResult.compile && vmResult.compile.exitCode !== 0) {
         const errorLog = vmResult.compile.stderr || vmResult.compile.stdout || 'Compilation failed.'
-        return {
+        const compileErrResult: EvaluationResultDto = {
           status: 'error',
           verdict: 'Compile Error',
           passedCases: 0,
@@ -313,6 +366,10 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
           output: errorLog,
           testCases: [],
         }
+        if (isSubmit) {
+          await this.persistSubmission(dto.problemId, dto.lang, cleanCode, compileErrResult)
+        }
+        return compileErrResult
       }
 
       // 6. Judge per-testcase execution and output correctness
@@ -445,7 +502,7 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
           : `${verdict} on test case #${failedCaseInfo.caseIndex}:\nInput: ${failedCaseInfo.input}\nExpected: ${failedCaseInfo.expected}\nGot: ${failedCaseInfo.actual || '(empty)'}`
       }
 
-      return {
+      const finalResult: EvaluationResultDto = {
         status,
         verdict,
         passedCases,
@@ -458,6 +515,12 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         failedCase: failedCaseInfo,
         testCases: caseResults,
       }
+
+      if (isSubmit) {
+        await this.persistSubmission(dto.problemId, dto.lang, cleanCode, finalResult)
+      }
+
+      return finalResult
     } catch (err: any) {
       return {
         status: 'error',
@@ -522,5 +585,321 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         error: err?.message ?? String(err),
       }
     }
+  }
+
+  /**
+   * Inserts a new Submission record for a challenge and updates Challenge progress/solved status.
+   */
+  private async persistSubmission(
+    challengeId: number,
+    lang: string,
+    code: string,
+    result: EvaluationResultDto
+  ): Promise<void> {
+    if (!this.dataSource) return
+
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+    const challenge = await challengeRepo.findOne({ where: { id: challengeId } })
+    if (!challenge) return
+
+    const submissionRepo = this.dataSource.getRepository(SubmissionEntity)
+
+    const payload = {
+      challengeId,
+      lang,
+      code,
+      status: result.status,
+      verdict: result.verdict,
+      passedCases: result.passedCases,
+      totalCases: result.totalCases,
+      timeMs: result.timeMs,
+      cpuMs: result.testCases.reduce((max, tc) => Math.max(max, tc.cpuMs ?? 0), 0),
+      memoryKb: result.memoryKb,
+      output: result.output ?? null,
+      compileError: result.compileError ?? null,
+      failedCase: (result.failedCase as Record<string, unknown>) ?? null,
+      testCaseResults: result.testCases as unknown as Array<Record<string, unknown>>,
+    }
+
+    await submissionRepo.save(submissionRepo.create(payload))
+
+    await challengeRepo.update(
+      { id: challengeId },
+      {
+        solution: code,
+        solved: challenge.solved || result.verdict === 'Accepted',
+      }
+    )
+  }
+
+  /**
+   * Loads all categories, challenges, and submissions from SQLite.
+   */
+  async getWorkspaceData() {
+    if (!this.dataSource) {
+      return { categories: [], challenges: [], submissions: [] }
+    }
+
+    const categoryRepo = this.dataSource.getRepository(CategoryEntity)
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+    const submissionRepo = this.dataSource.getRepository(SubmissionEntity)
+
+    const [categories, challenges, submissions] = await Promise.all([
+      categoryRepo.find({ relations: { challenges: true }, order: { id: 'ASC' } }),
+      challengeRepo.find({ relations: { category: true }, order: { id: 'ASC' } }),
+      submissionRepo.find({ relations: { challenge: true }, order: { updatedAt: 'DESC', id: 'DESC' } }),
+    ])
+
+    return { categories, challenges, submissions }
+  }
+
+  /**
+   * Persists challenge user code progress (`solution`), `solved`, or `starred` flags.
+   */
+  async saveChallengeProgress(dto: {
+    challengeId: number
+    solution?: string
+    solved?: boolean
+    starred?: boolean
+  }) {
+    if (!this.dataSource) return null
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+    const patch: Partial<{ solution: string; solved: boolean; starred: boolean }> = {}
+    if (dto.solution !== undefined) patch.solution = dto.solution
+    if (dto.solved !== undefined) patch.solved = dto.solved
+    if (dto.starred !== undefined) patch.starred = dto.starred
+
+    if (Object.keys(patch).length > 0) {
+      await challengeRepo.update({ id: dto.challengeId }, patch)
+    }
+    return challengeRepo.findOne({ where: { id: dto.challengeId } })
+  }
+
+  /**
+   * Creates a new Category (or reuses existing by title) and saves its Challenge(s) in SQLite.
+   */
+  async createCategory(dto: {
+    title: string
+    description: string
+    challenge?: {
+      title: string
+      description: string
+      difficulty?: 'Easy' | 'Medium' | 'Hard'
+      initialSolutions?: Record<string, string>
+      hints?: string[]
+      tags?: string[]
+      examples?: Array<Record<string, unknown>>
+      constraints?: string[]
+      testCases?: Array<Record<string, unknown>>
+    }
+    challenges?: Array<{
+      title: string
+      description: string
+      difficulty?: 'Easy' | 'Medium' | 'Hard'
+      initialSolutions?: Record<string, string>
+      hints?: string[]
+      tags?: string[]
+      examples?: Array<Record<string, unknown>>
+      constraints?: string[]
+      testCases?: Array<Record<string, unknown>>
+    }>
+  }) {
+    if (!this.dataSource) {
+      throw new Error('Database is not initialized.')
+    }
+
+    const normalizedTitle = dto.title.trim()
+    if (!normalizedTitle) {
+      throw new Error('Category title cannot be empty.')
+    }
+
+    const categoryRepo = this.dataSource.getRepository(CategoryEntity)
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+
+    // Never create a duplicate category if one with the same title already exists
+    let category = await categoryRepo
+      .createQueryBuilder('category')
+      .where('LOWER(TRIM(category.title)) = LOWER(:title)', {
+        title: normalizedTitle,
+      })
+      .getOne()
+
+    const created = !category
+    if (!category) {
+      category = await categoryRepo.save(
+        categoryRepo.create({
+          title: normalizedTitle,
+          description: dto.description,
+        })
+      )
+    }
+
+    const challengePayloads = dto.challenges?.length
+      ? dto.challenges
+      : dto.challenge
+        ? [dto.challenge]
+        : []
+
+    if (challengePayloads.length === 0) {
+      return { category, created }
+    }
+
+    const savedChallenges = []
+    for (let idx = 0; idx < challengePayloads.length; idx++) {
+      const item = challengePayloads[idx]
+      const initialSolutions = item.initialSolutions ?? {
+        typescript: '',
+        javascript: '',
+        python: '',
+        cpp: '',
+      }
+      const baseSlug =
+        item.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || 'challenge'
+      const existingSlug = await challengeRepo.findOne({ where: { slug: baseSlug } })
+      const slug = existingSlug ? `${baseSlug}-${Date.now()}-${idx}` : baseSlug
+
+      const saved = await challengeRepo.save(
+        challengeRepo.create({
+          slug,
+          title: item.title,
+          description: item.description,
+          difficulty: item.difficulty ?? 'Medium',
+          acceptance: '50.0%',
+          tags: item.tags ?? [],
+          examples: item.examples ?? [],
+          constraints: item.constraints ?? [],
+          testCases: item.testCases ?? [],
+          initialSolution: initialSolutions.typescript ?? '',
+          initialSolutions,
+          solution: '',
+          hints: item.hints ?? [],
+          solved: false,
+          starred: false,
+          categoryId: category.id,
+        })
+      )
+      savedChallenges.push(saved)
+    }
+
+    return {
+      category,
+      created,
+      challenge: savedChallenges[0],
+      challenges: savedChallenges,
+    }
+  }
+
+  /**
+   * Returns recorded submissions from SQLite, optionally filtered by challengeId.
+   */
+  async getSubmissions(challengeId?: number) {
+    if (!this.dataSource) return []
+    const submissionRepo = this.dataSource.getRepository(SubmissionEntity)
+    if (challengeId !== undefined) {
+      return submissionRepo.find({
+        where: { challengeId },
+        relations: { challenge: true },
+        order: { updatedAt: 'DESC', id: 'DESC' },
+      })
+    }
+    return submissionRepo.find({
+      relations: { challenge: true },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    })
+  }
+
+  /**
+   * Returns all favorited challenges from SQLite.
+   */
+  async getFavorites() {
+    if (!this.dataSource) return []
+    const favoriteRepo = this.dataSource.getRepository(FavoriteEntity)
+    return favoriteRepo.find({
+      relations: { challenge: { category: true } },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    })
+  }
+
+  /**
+   * Toggles favorite status for a challenge and keeps `ChallengeEntity.starred` in sync.
+   */
+  async toggleFavorite(challengeId: number): Promise<{ favorited: boolean }> {
+    if (!this.dataSource) return { favorited: false }
+
+    const favoriteRepo = this.dataSource.getRepository(FavoriteEntity)
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+
+    const existing = await favoriteRepo.findOne({ where: { challengeId } })
+    if (existing) {
+      await favoriteRepo.delete({ id: existing.id })
+      await challengeRepo.update({ id: challengeId }, { starred: false })
+      return { favorited: false }
+    }
+
+    await favoriteRepo.save(favoriteRepo.create({ challengeId }))
+    await challengeRepo.update({ id: challengeId }, { starred: true })
+    return { favorited: true }
+  }
+
+  /**
+   * Returns paginated Questions Factory conversations ordered most-recently-updated first.
+   */
+  async getFactoryConversations(dto: { page?: number; limit?: number } = {}): Promise<PaginatedFactoryConversationsDto> {
+    const safeLimit = Math.min(Math.max(Math.trunc(dto.limit ?? 10), 1), 50)
+    const safePage = Math.max(Math.trunc(dto.page ?? 0), 0)
+
+    if (!this.dataSource) {
+      return { items: [], page: safePage, limit: safeLimit, total: 0, hasMore: false }
+    }
+
+    const repo = this.dataSource.getRepository(FactoryConversationEntity)
+    const [items, total] = await repo.findAndCount({
+      order: { updatedAt: 'DESC', createdAt: 'DESC', id: 'DESC' },
+      skip: safePage * safeLimit,
+      take: safeLimit,
+    })
+
+    return {
+      items,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      hasMore: (safePage + 1) * safeLimit < total,
+    }
+  }
+
+  /**
+   * Creates or updates a Questions Factory conversation snapshot in SQLite.
+   */
+  async saveFactoryConversation(dto: SaveFactoryConversationDto) {
+    if (!this.dataSource) return null
+
+    const repo = this.dataSource.getRepository(FactoryConversationEntity)
+    const normalizedTitle = dto.title.trim() || 'Untitled Conversation'
+    const existing = await repo.findOne({ where: { id: dto.id } })
+
+    if (existing) {
+      existing.title = normalizedTitle
+      existing.messages = dto.messages
+      existing.draft = dto.draft
+      existing.generatedQuestions = dto.generatedQuestions
+      existing.generatedTarget = dto.generatedTarget
+      existing.updatedAt = new Date()
+      return repo.save(existing)
+    }
+
+    return repo.save(
+      repo.create({
+        id: dto.id,
+        title: normalizedTitle,
+        messages: dto.messages,
+        draft: dto.draft,
+        generatedQuestions: dto.generatedQuestions,
+        generatedTarget: dto.generatedTarget,
+      })
+    )
   }
 }

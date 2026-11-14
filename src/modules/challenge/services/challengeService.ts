@@ -8,7 +8,6 @@
  */
 
 import { Problem, RunResult, Difficulty, SupportedLang } from '../types'
-import { injectHarnessWithBabel } from '../utils/babelInjector.ts'
 import { abstractUserFacingCode } from '../utils/codeAbstractor.ts'
 
 /**
@@ -38,15 +37,14 @@ export const challengeService = {
     lang: SupportedLang,
     mode: 'run' | 'submit'
   ): Promise<RunResult> {
-    // Abstract any legacy standard I/O and inject driver harness via Babel
+    // Strip any legacy standard I/O; backend CodeTestService type-checks and injects the driver harness
     const cleanUserCode = abstractUserFacingCode(code, lang)
-    const executableCode = injectHarnessWithBabel(cleanUserCode, lang, problem)
 
     if (typeof window !== 'undefined' && window.ipcRenderer?.invoke) {
       try {
         const res = await window.ipcRenderer.invoke('code-test:evaluate', {
           problemId: problem.id,
-          code: executableCode,
+          code: cleanUserCode,
           lang,
           mode,
           problem,
