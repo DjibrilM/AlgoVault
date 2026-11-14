@@ -9,7 +9,7 @@ export const EASY_PROBLEMS: Problem[] = [
     category: 'Warmup',
     acceptance: '98.5%',
     solved: false,
-    starred: true,
+    starred: false,
     tags: ['Math', 'Warmup', 'Arithmetic'],
     description: `Welcome to the AlgoVault sandbox! This warmup problem lets you verify your execution environment and test your code directly inside the QEMU micro-VM using a pure return-based function.
 
@@ -89,7 +89,7 @@ public:
     category: 'Arithmetic',
     acceptance: '99.1%',
     solved: false,
-    starred: true,
+    starred: false,
     tags: ['Math', 'Arithmetic', 'Basic'],
     description: `Given two integers \`a\` and \`b\`, return their product:
 
@@ -151,7 +151,7 @@ public:
     category: 'Arithmetic',
     acceptance: '94.2%',
     solved: false,
-    starred: true,
+    starred: false,
     tags: ['Math', 'Recursion', 'Arithmetic'],
     description: `Given a non-negative integer \`n\`, return its factorial $n!$:
 
@@ -232,7 +232,7 @@ public:
     category: 'Math',
     acceptance: '54.2%',
     solved: false,
-    starred: true,
+    starred: false,
     tags: ['Math', 'String'],
     description: `Given an integer \`x\`, return \`true\` if \`x\` is a **palindrome**, and \`false\` otherwise.
 
@@ -305,7 +305,7 @@ public:
     category: 'Data Structures',
     acceptance: '51.8%',
     solved: true,
-    starred: true,
+    starred: false,
     tags: ['Array', 'Hash Table'],
     description: `Given an array of integers \`nums\` of length $n$ and an integer \`target\`, return *indices of the two numbers* $i$ and $j$ ($0 \\le i < j < n$) such that they satisfy:
 
@@ -403,7 +403,7 @@ public:
     category: 'Data Structures',
     acceptance: '40.6%',
     solved: true,
-    starred: true,
+    starred: false,
     tags: ['String', 'Stack'],
     description: `Given a string \`s\` containing just the characters \`'('\`, \`')'\`, \`'{'\`, \`'}'\`, \`'['\` and \`']'\`, determine if the input string is **valid**.
 

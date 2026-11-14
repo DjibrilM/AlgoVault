@@ -104,6 +104,40 @@ class MockCodeTestService implements ICodeTestService {
     this.mockVmRunning = false
   }
 
+  setDataSource(): void {}
+
+  async getWorkspaceData() {
+    return { categories: [], challenges: [], submissions: [] }
+  }
+
+  async saveChallengeProgress() {
+    return null
+  }
+
+  async createCategory() {
+    return { category: null }
+  }
+
+  async getSubmissions() {
+    return []
+  }
+
+  async getFavorites() {
+    return []
+  }
+
+  async toggleFavorite() {
+    return { favorited: true }
+  }
+
+  async getFactoryConversations() {
+    return { items: [], page: 0, limit: 10, total: 0, hasMore: false }
+  }
+
+  async saveFactoryConversation() {
+    return null
+  }
+
   getStatus(): VmStatusDto {
     this.calls.push('getStatus')
     return { running: this.mockVmRunning, versions: { test: 'mock' } }
@@ -123,8 +157,8 @@ async function runTests() {
   const controller = new CodeTestController(mockService)
   controller.registerIpc(mockIpc as any)
 
-  assert.strictEqual(mockIpc.handlers.size, 5, 'Controller must register 5 IPC handlers')
-  console.log('   ✔ 5 IPC routes registered via controller')
+  assert.strictEqual(mockIpc.handlers.size, 13, 'Controller must register 13 IPC handlers')
+  console.log('   ✔ 13 IPC routes registered via controller')
 
   // Test code-test:evaluate
   const evalRes: EvaluationResultDto = await mockIpc.invoke(CODE_TEST_CHANNELS.EVALUATE, {
@@ -174,7 +208,7 @@ async function runTests() {
   assert.ok(codeTestModule instanceof CodeTestModule, 'forRoot() must return CodeTestModule instance')
   assert.ok(codeTestModule.service, 'Module must hold injected Service provider')
   assert.ok(codeTestModule.controller, 'Module must hold Controller with injected Service')
-  assert.strictEqual(moduleIpc.handlers.size, 5, 'OnModuleInit must automatically wire and register IPC routes')
+  assert.strictEqual(moduleIpc.handlers.size, 13, 'OnModuleInit must automatically wire and register IPC routes')
   console.log('   ✔ CodeTestModule.forRoot() wired providers into controllers and invoked onModuleInit()')
 
   await codeTestModule.onModuleDestroy()

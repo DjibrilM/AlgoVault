@@ -4,6 +4,7 @@ import {
   AICategory,
   MarathonStep,
   MarathonTrack,
+  SubmissionRecordDto,
 } from '@/shared/types/problem'
 import {
   INITIAL_PROBLEMS,
@@ -11,6 +12,8 @@ import {
   INITIAL_MARATHON_STEPS,
   INITIAL_MARATHONS,
 } from '@/shared/data/mockProblems'
+import { databaseClient } from '@/shared/services/databaseClient'
+import { queryClient, QUERY_KEYS } from '@/shared/lib/queryClient'
 import { NavSection } from '@/layout/types'
 import { activeNavAtom } from './navigationAtoms'
 
@@ -22,6 +25,7 @@ export interface ActiveCategoryState {
 export interface NavigationSnapshot {
   activeNav: NavSection
   isViewingAllMarathons: boolean
+  isViewingAiStudio: boolean
   isSolvingChallenge: boolean
   activeCategory: ActiveCategoryState | null
   selectedProblemId: number
@@ -30,18 +34,24 @@ export interface NavigationSnapshot {
 const INITIAL_SNAPSHOT: NavigationSnapshot = {
   activeNav: 'home',
   isViewingAllMarathons: false,
+  isViewingAiStudio: false,
   isSolvingChallenge: false,
   activeCategory: null,
   selectedProblemId: 100,
 }
 
-// Base State Atoms
-export const problemsAtom = atom<Problem[]>(INITIAL_PROBLEMS)
-export const categoriesAtom = atom<AICategory[]>(INITIAL_AI_CATEGORIES)
+const IS_ELECTRON = databaseClient.isAvailable()
+
+// Base State Atoms (hydrated from SQLite in Electron; fallback to static data only in web preview)
+export const problemsAtom = atom<Problem[]>(IS_ELECTRON ? [] : INITIAL_PROBLEMS)
+export const categoriesAtom = atom<AICategory[]>(IS_ELECTRON ? [] : INITIAL_AI_CATEGORIES)
+export const submissionsAtom = atom<SubmissionRecordDto[]>([])
+export const workspaceLoadedAtom = atom<boolean>(!IS_ELECTRON)
 export const marathonStepsAtom = atom<MarathonStep[]>(INITIAL_MARATHON_STEPS)
 export const marathonsAtom = atom<MarathonTrack[]>(INITIAL_MARATHONS)
 export const activeMarathonIdAtom = atom<string | null>(null)
 export const isViewingAllMarathonsAtom = atom<boolean>(false)
+export const isViewingAiStudioAtom = atom<boolean>(false)
 export const isSolvingChallengeAtom = atom<boolean>(false)
 export const activeCategoryAtom = atom<ActiveCategoryState | null>(null)
 export const selectedProblemIdAtom = atom<number>(100)
@@ -53,6 +63,7 @@ function isSameSnapshot(a: NavigationSnapshot, b: NavigationSnapshot): boolean {
   return (
     a.activeNav === b.activeNav &&
     a.isViewingAllMarathons === b.isViewingAllMarathons &&
+    a.isViewingAiStudio === b.isViewingAiStudio &&
     a.isSolvingChallenge === b.isSolvingChallenge &&
     a.selectedProblemId === b.selectedProblemId &&
     a.activeCategory?.name === b.activeCategory?.name &&
@@ -64,6 +75,7 @@ function pushNavSnapshot(get: Getter, set: Setter) {
   const snapshot: NavigationSnapshot = {
     activeNav: get(activeNavAtom),
     isViewingAllMarathons: get(isViewingAllMarathonsAtom),
+    isViewingAiStudio: get(isViewingAiStudioAtom),
     isSolvingChallenge: get(isSolvingChallengeAtom),
     activeCategory: get(activeCategoryAtom),
     selectedProblemId: get(selectedProblemIdAtom),
@@ -82,6 +94,7 @@ function pushNavSnapshot(get: Getter, set: Setter) {
 function applyNavSnapshot(set: Setter, snapshot: NavigationSnapshot) {
   set(activeNavAtom, snapshot.activeNav)
   set(isViewingAllMarathonsAtom, snapshot.isViewingAllMarathons)
+  set(isViewingAiStudioAtom, snapshot.isViewingAiStudio)
   set(isSolvingChallengeAtom, snapshot.isSolvingChallenge)
   set(activeCategoryAtom, snapshot.activeCategory)
   set(selectedProblemIdAtom, snapshot.selectedProblemId)
@@ -110,7 +123,15 @@ export const goForwardAtom = atom(null, (get, set) => {
   applyNavSnapshot(set, history[nextIndex])
 })
 
-// Helper pure function
+// Helper pure functions
+export function findCategoryByTitle(
+  categories: AICategory[],
+  title: string
+): AICategory | undefined {
+  const normalized = title.trim().toLowerCase()
+  return categories.find((cat) => cat.name.trim().toLowerCase() === normalized)
+}
+
 export function getCategoryProblemsList(
   problems: Problem[],
   categories: AICategory[],
@@ -172,13 +193,40 @@ export const currentProblemAtom = atom<Problem>((get) => {
 })
 
 // Action Atoms
+export const hydrateWorkspaceAtom = atom(null, async (get, set) => {
+  const snapshot = await databaseClient.getWorkspaceData()
+  if (!snapshot) return
+
+  set(categoriesAtom, snapshot.categories)
+  set(problemsAtom, snapshot.problems)
+  set(submissionsAtom, snapshot.submissions)
+  set(workspaceLoadedAtom, true)
+
+  const currentId = get(selectedProblemIdAtom)
+  if (
+    snapshot.problems.length > 0 &&
+    !snapshot.problems.some((p) => p.id === currentId)
+  ) {
+    set(selectedProblemIdAtom, snapshot.problems[0].id)
+  }
+})
+
+export const refreshSubmissionsAtom = atom(null, async (_get, set) => {
+  const subs = await databaseClient.getSubmissions()
+  set(submissionsAtom, subs)
+})
+
 export const solveProblemAtom = atom(
   null,
   (_get, set, problemId: number) => {
-    // 1. Mark problem solved
+    // 1. Mark problem solved locally & in SQLite
     set(problemsAtom, (prev) =>
       prev.map((p) => (p.id === problemId ? { ...p, solved: true } : p))
     )
+    void databaseClient.saveChallengeProgress({
+      challengeId: problemId,
+      solved: true,
+    })
 
     // 2. Unlock next marathon milestone if this problem was in the track
     set(marathonStepsAtom, (prev) => {
@@ -203,6 +251,7 @@ export const selectCategoryAtom = atom(
     set(activeNavAtom, 'home')
     set(activeCategoryAtom, { name: payload.name, isMarathon })
     set(isViewingAllMarathonsAtom, false)
+    set(isViewingAiStudioAtom, false)
     set(isSolvingChallengeAtom, Boolean(payload.startSolving))
     set(isSidebarOpenAtom, true)
 
@@ -259,6 +308,7 @@ export const navigateSectionAtom = atom(
     if (nav === 'home') {
       set(activeCategoryAtom, null)
       set(isViewingAllMarathonsAtom, false)
+      set(isViewingAiStudioAtom, false)
       set(isSolvingChallengeAtom, false)
     }
     pushNavSnapshot(get, set)
@@ -270,6 +320,19 @@ export const viewAllMarathonsAtom = atom(
   (get, set) => {
     set(activeNavAtom, 'home')
     set(isViewingAllMarathonsAtom, true)
+    set(isViewingAiStudioAtom, false)
+    set(activeCategoryAtom, null)
+    set(isSolvingChallengeAtom, false)
+    pushNavSnapshot(get, set)
+  }
+)
+
+export const openAiStudioAtom = atom(
+  null,
+  (get, set) => {
+    set(activeNavAtom, 'home')
+    set(isViewingAiStudioAtom, true)
+    set(isViewingAllMarathonsAtom, false)
     set(activeCategoryAtom, null)
     set(isSolvingChallengeAtom, false)
     pushNavSnapshot(get, set)
@@ -278,9 +341,44 @@ export const viewAllMarathonsAtom = atom(
 
 export const generateCategoryAtom = atom(
   null,
-  (get, set, prompt: string) => {
+  async (get, set, prompt: string) => {
+    const rawName = prompt.trim()
+    const newCategoryName = rawName.length > 25 ? `${rawName.slice(0, 22)}...` : rawName
+
+    if (databaseClient.isAvailable()) {
+      const result = await databaseClient.createCategory({
+        title: newCategoryName,
+        description: `Collection created from prompt: "${prompt}"`,
+        challenge: {
+          title: `${newCategoryName} Challenge`,
+          description: `### ${newCategoryName}\n\nGiven the requirements in your prompt: *"${prompt}"*, implement an optimal algorithm.`,
+          difficulty: 'Medium',
+          tags: [newCategoryName],
+          examples: [{ id: 1, input: 'n = 5', output: 'true' }],
+          constraints: ['$1 \\le n \\le 10^5$'],
+          hints: ['Break the problem down into base cases and optimal substructure.'],
+          initialSolutions: {
+            typescript: `function solve(): boolean {\n  return true;\n}`,
+            python: `def solve() -> bool:\n    return True`,
+            javascript: `function solve() {\n  return true;\n}`,
+            cpp: `bool solve() {\n    return true;\n}`,
+          },
+          testCases: [{ id: 1, input: 'n = 5', expected: 'true' }],
+        },
+      })
+
+      await set(hydrateWorkspaceAtom)
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.workspace })
+      set(activeCategoryAtom, {
+        name: result?.category?.title ?? newCategoryName,
+        isMarathon: false,
+      })
+      set(isSidebarOpenAtom, true)
+      pushNavSnapshot(get, set)
+      return
+    }
+
     const newId = Date.now()
-    const newCategoryName = prompt.length > 25 ? `${prompt.slice(0, 22)}...` : prompt
 
     const generatedProblems: Problem[] = [
       {
@@ -333,16 +431,30 @@ export const generateCategoryAtom = atom(
 
     set(problemsAtom, (prev) => [...generatedProblems, ...prev])
 
-    const newCat: AICategory = {
-      id: `cat-${newId}`,
-      name: newCategoryName,
-      description: `AI Collection generated from prompt: "${prompt}"`,
-      isCustom: true,
-      problemIds: generatedProblems.map((p) => p.id),
+    const generatedIds = generatedProblems.map((p) => p.id)
+    const existingCat = findCategoryByTitle(get(categoriesAtom), newCategoryName)
+    const targetCategoryName = existingCat?.name ?? newCategoryName
+
+    if (existingCat) {
+      set(categoriesAtom, (prev) =>
+        prev.map((cat) =>
+          cat.id === existingCat.id
+            ? { ...cat, problemIds: [...cat.problemIds, ...generatedIds] }
+            : cat
+        )
+      )
+    } else {
+      const newCat: AICategory = {
+        id: `cat-${newId}`,
+        name: newCategoryName,
+        description: `AI Collection generated from prompt: "${prompt}"`,
+        isCustom: true,
+        problemIds: generatedIds,
+      }
+      set(categoriesAtom, (prev) => [newCat, ...prev])
     }
 
-    set(categoriesAtom, (prev) => [newCat, ...prev])
-    set(activeCategoryAtom, { name: newCategoryName, isMarathon: false })
+    set(activeCategoryAtom, { name: targetCategoryName, isMarathon: false })
     set(selectedProblemIdAtom, newId)
     set(isSidebarOpenAtom, true)
     pushNavSnapshot(get, set)

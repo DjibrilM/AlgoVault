@@ -46,7 +46,52 @@ export interface Problem {
   hints: string[]
   tags: string[]
   codeTemplates: Record<SupportedLang, string>
+  /** Saved user solution from SQLite (initially empty) */
+  solution?: string
   testCases: TestCase[]
+}
+
+export interface SubmissionRecordDto {
+  id: number
+  challengeId: number
+  challenge?: {
+    id: number
+    title: string
+    difficulty: Difficulty
+    slug?: string
+  } | null
+  lang: string
+  code: string
+  status: string
+  verdict: string
+  passedCases: number
+  totalCases: number
+  timeMs: number
+  cpuMs: number
+  memoryKb: number
+  output: string | null
+  compileError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FavoriteRecordDto {
+  id: number
+  challengeId: number
+  challenge?: {
+    id: number
+    slug: string
+    title: string
+    difficulty: Difficulty
+    solved: boolean
+    tags: string[]
+    category?: {
+      id: number
+      title: string
+    } | null
+  } | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface MarathonStep {
@@ -88,4 +133,23 @@ export interface RunResult {
   expected?: string
   actual?: string
   compileError?: string
+}
+
+export interface FactoryConversationRecordDto {
+  id: string
+  title: string
+  messages: Array<Record<string, unknown>>
+  draft: Record<string, unknown> | null
+  generatedQuestions: Array<Record<string, unknown>>
+  generatedTarget: Record<string, unknown> | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PaginatedFactoryConversationsDto {
+  items: FactoryConversationRecordDto[]
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
 }
