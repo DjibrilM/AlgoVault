@@ -11,6 +11,7 @@ import {
   activeProblemsAtom,
   selectedLangAtom,
 } from '@/shared/store'
+import { useSubmitCodeMutation } from '@/shared/hooks/useWorkspaceQueries'
 import { challengeService } from '../services/challengeService'
 
 const FALLBACK_PROBLEM: Problem = {
@@ -52,6 +53,7 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
   const [globalIsRunning, setGlobalIsRunning] = useAtom(isRunningAtom)
   const [globalRunResult, setGlobalRunResult] = useAtom(runResultAtom)
   const [globalLang, setGlobalLang] = useAtom(selectedLangAtom)
+  const submitCodeMutation = useSubmitCodeMutation()
 
   // Local state fallbacks if props are provided
   const [localCode, setLocalCode] = useState<string>('')
@@ -105,7 +107,11 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
     setIsRunning(true)
     setRunResult({ status: 'running' })
     try {
-      const result = await challengeService.submitCode(currentProblem, code, globalLang)
+      const result = await submitCodeMutation.mutateAsync({
+        problem: currentProblem,
+        code,
+        lang: globalLang,
+      })
       setRunResult(result)
       if (result.status === 'success') {
         onSolveProblem?.(selectedProblemId)

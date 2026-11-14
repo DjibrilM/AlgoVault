@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bookmark,
-  Share2,
   FileText,
   Lightbulb,
   CheckCircle2,
+  XCircle,
   ChevronRight,
   ChevronDown,
 } from 'lucide-react'
@@ -16,6 +16,13 @@ import { createMathPlugin } from '@streamdown/math'
 import { cjk } from '@streamdown/cjk'
 import 'katex/dist/katex.min.css'
 import { cn } from '@/lib/utils'
+import { CodeViewer } from '@/shared/components/CodeViewer'
+import {
+  useFavoritesQuery,
+  useSubmissionsQuery,
+  useToggleFavoriteMutation,
+} from '@/shared/hooks/useWorkspaceQueries'
+import { databaseClient } from '@/shared/services/databaseClient'
 import { Difficulty, Problem } from '@/shared/types/problem'
 import { ProblemDescriptionProps } from '../types'
 import { challengeService } from '../services/challengeService'
@@ -46,8 +53,19 @@ export function ProblemDescription({
   headerActions,
   isStreaming = false,
 }: ProblemDescriptionProps) {
-  const [activeTab, setActiveTab] = useState<'description' | 'solutions' | 'submissions'>('description')
+  const [activeTab, setActiveTab] = useState<'description' | 'hints' | 'submissions'>('description')
   const [expandedHints, setExpandedHints] = useState<Record<number, boolean>>({})
+  const [expandedSubmissions, setExpandedSubmissions] = useState<Record<number, boolean>>({})
+  const { data: problemSubmissions = [] } = useSubmissionsQuery(problem.id)
+  const { data: favorites = [] } = useFavoritesQuery()
+  const toggleFavoriteMutation = useToggleFavoriteMutation()
+  const isFavorited = databaseClient.isAvailable()
+    ? favorites.some((fav) => fav.challengeId === problem.id)
+    : Boolean(problem.starred)
+
+  const toggleSubmission = (id: number) => {
+    setExpandedSubmissions((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
 
   const toggleHint = (idx: number) => {
     setExpandedHints((prev) => ({ ...prev, [idx]: !prev[idx] }))
@@ -61,8 +79,8 @@ export function ProblemDescription({
       iconColor: 'text-[#6366F1]',
     },
     {
-      id: 'solutions' as const,
-      label: 'Editorial & Solutions',
+      id: 'hints' as const,
+      label: 'Hints',
       icon: Lightbulb,
       iconColor: 'text-[#F59E0B]',
     },
@@ -123,20 +141,17 @@ export function ProblemDescription({
         <div className="flex items-center gap-1 text-[#A3A3A3]">
           {headerActions}
           <button
-            className="p-1 rounded hover:bg-[#262626] hover:text-white transition-colors cursor-pointer"
-            title="Star problem"
+            type="button"
+            onClick={() => toggleFavoriteMutation.mutate(problem.id)}
+            disabled={toggleFavoriteMutation.isPending}
+            className="p-1 rounded hover:bg-[#262626] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+            title={isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
           >
             <Bookmark
               className={cn('h-3.5 w-3.5', {
-                'text-[#F59E0B] fill-current': problem.starred,
+                'text-[#F59E0B] fill-current': isFavorited,
               })}
             />
-          </button>
-          <button
-            className="p-1 rounded hover:bg-[#262626] hover:text-white transition-colors cursor-pointer"
-            title="Share"
-          >
-            <Share2 className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
@@ -250,63 +265,60 @@ export function ProblemDescription({
                     </ul>
                   </div>
                 )}
-
-                {/* Hints Accordion */}
-                {problem.hints.length > 0 && (
-                  <div className="space-y-2 pt-2">
-                    <h3 className="font-bold text-xs text-white uppercase tracking-wider">
-                      Hints ({problem.hints.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {problem.hints.map((hint, idx) => {
-                        const isOpen = Boolean(expandedHints[idx])
-                        return (
-                          <div
-                            key={idx}
-                            className="rounded-xl border border-[#2E2E2E] bg-[#202020] overflow-hidden text-xs"
-                          >
-                            <button
-                              onClick={() => toggleHint(idx)}
-                              className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-[#262626] transition-colors cursor-pointer"
-                            >
-                              <span className="font-medium text-[#D4D4D4] flex items-center gap-2">
-                                <Lightbulb className="h-3.5 w-3.5 text-[#F59E0B]" />
-                                <span>Hint {idx + 1}</span>
-                              </span>
-                              {isOpen ? (
-                                <ChevronDown className="h-3.5 w-3.5 text-[#737373]" />
-                              ) : (
-                                <ChevronRight className="h-3.5 w-3.5 text-[#737373]" />
-                              )}
-                            </button>
-                            {isOpen && (
-                              <div className="p-3.5 pt-2 text-xs text-[#A3A3A3] border-t border-[#262626] bg-[#1A1A1A]">
-                                <Streamdown
-                                  plugins={STREAMDOWN_PLUGINS}
-                                  isAnimating={isStreaming}
-                                >
-                                  {hint}
-                                </Streamdown>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
               </>
             )}
 
-            {activeTab === 'solutions' && (
+            {activeTab === 'hints' && (
               <div className="space-y-4 text-xs text-[#D4D4D4]">
-                <Streamdown
-                  plugins={STREAMDOWN_PLUGINS}
-                  isAnimating={isStreaming}
-                  className="space-y-3"
-                >
-                  {`### Editorial & Official Solution\n\nDetailed time/space complexity analysis and step-by-step intuition for **${problem.title}**.\n\n\`\`\`typescript\n${problem.codeTemplates.typescript}\n\`\`\`\n\n- **Time Complexity:** $O(N)$\n- **Space Complexity:** $O(N)$ auxiliary space`}
-                </Streamdown>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-sm text-white">Approach & Hints</h3>
+                  <p className="text-xs text-[#A3A3A3]">
+                    Use these step-by-step hints to guide your thinking without spoiling the solution.
+                  </p>
+                </div>
+
+                {problem.hints.length > 0 ? (
+                  <div className="space-y-2">
+                    {problem.hints.map((hint, idx) => {
+                      const isOpen = Boolean(expandedHints[idx])
+                      return (
+                        <div
+                          key={idx}
+                          className="rounded-xl border border-[#2E2E2E] bg-[#202020] overflow-hidden text-xs"
+                        >
+                          <button
+                            onClick={() => toggleHint(idx)}
+                            className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-[#262626] transition-colors cursor-pointer"
+                          >
+                            <span className="font-medium text-[#D4D4D4] flex items-center gap-2">
+                              <Lightbulb className="h-3.5 w-3.5 text-[#F59E0B]" />
+                              <span>Hint {idx + 1}</span>
+                            </span>
+                            {isOpen ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-[#737373]" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5 text-[#737373]" />
+                            )}
+                          </button>
+                          {isOpen && (
+                            <div className="p-3.5 pt-2 text-xs text-[#A3A3A3] border-t border-[#262626] bg-[#1A1A1A]">
+                              <Streamdown
+                                plugins={STREAMDOWN_PLUGINS}
+                                isAnimating={isStreaming}
+                              >
+                                {hint}
+                              </Streamdown>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-[#2E2E2E] bg-[#202020] text-xs text-[#A3A3A3]">
+                    Break the problem down by checking the input constraints, identifying edge cases, and choosing an appropriate data structure{problem.tags.length > 0 ? ` (${problem.tags.join(', ')})` : ''}.
+                  </div>
+                )}
               </div>
             )}
 
@@ -314,15 +326,76 @@ export function ProblemDescription({
               <div className="space-y-3">
                 <h3 className="font-bold text-sm text-white">Past Submissions</h3>
                 <p className="text-xs text-[#A3A3A3]">
-                  All recorded attempts and benchmarks for this challenge.
+                  Recorded attempts and compute resource metrics for this challenge.
                 </p>
-                <div className="p-4 rounded-xl bg-[#202020] border border-[#2E2E2E] flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#16A34A]" />
-                    <span className="text-white font-medium">Accepted</span>
+
+                {problemSubmissions.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-[#202020] border border-[#2E2E2E] text-xs text-[#8C8C8C]">
+                    No submissions yet. Submit your solution to record an attempt.
                   </div>
-                  <span className="text-[#737373] font-mono">35 ms • 42.1 MB</span>
-                </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {problemSubmissions.map((sub) => {
+                      const isAccepted = sub.verdict === 'Accepted'
+                      const isExpanded = Boolean(expandedSubmissions[sub.id])
+                      return (
+                        <div
+                          key={sub.id}
+                          className="rounded-lg bg-[#202020] border border-[#2E2E2E] overflow-hidden text-xs"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSubmission(sub.id)}
+                            className="w-full px-3 py-2 text-left hover:bg-[#252525] transition-colors cursor-pointer flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {isExpanded ? (
+                                <ChevronDown className="h-3.5 w-3.5 text-[#8C8C8C] shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5 text-[#8C8C8C] shrink-0" />
+                              )}
+                              {isAccepted ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-[#16A34A] shrink-0" />
+                              ) : (
+                                <XCircle className="h-3.5 w-3.5 text-[#DC2626] shrink-0" />
+                              )}
+                              <span
+                                className={cn(
+                                  'font-semibold truncate',
+                                  isAccepted ? 'text-[#16A34A]' : 'text-[#DC2626]'
+                                )}
+                              >
+                                {sub.verdict}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-white/5 text-[#A3A3A3] font-mono text-[10px]">
+                                {sub.lang}
+                              </span>
+                              <span className="text-[11px] text-[#737373]">
+                                {sub.passedCases}/{sub.totalCases}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-[#737373] font-mono shrink-0">
+                              {sub.timeMs}ms • {(sub.memoryKb / 1024).toFixed(1)}MB
+                            </span>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="px-3 pb-3 pt-2 border-t border-[#2E2E2E] bg-[#181818] space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] text-[#737373]">
+                                <span>{new Date(sub.updatedAt).toLocaleString()}</span>
+                              </div>
+                              <CodeViewer
+                                code={sub.code}
+                                lang={sub.lang}
+                                className="prose prose-invert prose-xs max-w-none [&>pre]:my-0"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </motion.div>

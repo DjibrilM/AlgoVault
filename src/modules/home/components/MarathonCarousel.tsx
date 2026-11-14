@@ -98,24 +98,24 @@ export function MarathonCarousel({
       </div>
 
       {/* Horizontal Scroll Carousel with Edge Fade Shadows */}
-      <div className="relative">
-        {/* Left Edge Shadow Fade */}
+      <div className="relative -mx-4">
+        {/* Left Edge Shadow Fade (sits in the 16px gutter; gap-5 ensures previous snapped card is off-screen) */}
         <div
-          className={`pointer-events-none absolute inset-y-0 left-0 w-40 bg-gradient-to-r from-[#1A1A1A] via-[#1A1A1A]/80 to-transparent z-30 transition-opacity duration-300 ${
+          className={`pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-[#1A1A1A] to-transparent z-30 transition-opacity duration-200 ${
             canScrollLeft ? 'opacity-100' : 'opacity-0'
           }`}
         />
 
         {/* Right Edge Shadow Fade */}
         <div
-          className={`pointer-events-none absolute inset-y-0 right-0 w-44 bg-gradient-to-l from-[#1A1A1A] via-[#1A1A1A]/85 to-transparent z-30 transition-opacity duration-300 ${
+          className={`pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[#1A1A1A] to-transparent z-30 transition-opacity duration-200 ${
             canScrollRight ? 'opacity-100' : 'opacity-0'
           }`}
         />
 
         <div
           ref={scrollContainerRef}
-          className="flex items-center gap-4 overflow-x-auto scrollbar-none pb-2 pt-1 scroll-smooth snap-x snap-mandatory"
+          className="flex items-center gap-5 overflow-x-auto scrollbar-none px-4 scroll-px-4 pb-2 pt-1 scroll-smooth snap-x snap-mandatory"
         >
         {marathons.map((marathon) => {
           const { totalCount, percentage, nextStep } =
@@ -126,7 +126,7 @@ export function MarathonCarousel({
             <div
               key={marathon.id}
               onClick={() => onSelectMarathon(marathon)}
-              className="group relative flex-shrink-0 w-[460px] md:w-[520px] h-[190px] rounded-2xl overflow-hidden cursor-pointer shadow-xl hover:shadow-2xl transition-all duration-300 snap-start flex flex-col justify-between bg-[#141414]"
+              className="group relative flex-shrink-0 w-[360px] md:w-[400px] h-[185px] rounded-2xl overflow-hidden cursor-pointer shadow-xl hover:shadow-2xl transition-all duration-300 snap-start flex flex-col justify-between bg-[#141414]"
             >
               {/* Background Cover Image with subtle zoom on hover */}
               <img

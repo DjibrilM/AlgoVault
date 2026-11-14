@@ -284,8 +284,8 @@
     --card-foreground: #FFFFFF;
     --popover: #1F1F1F;
     --popover-foreground: #FFFFFF;
-    --primary: #6366F1;
-    --primary-foreground: #FFFFFF;
+    --primary: #FFFFFF;
+    --primary-foreground: #141414;
     --secondary: #27272A;
     --secondary-foreground: #FFFFFF;
     --muted: #262626;
@@ -456,6 +456,45 @@
   transform: scale(0.95) translateY(-4px);
 }
 
+/* Minimal Scrollbar Styling (transparent track, sleek pill thumb) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scrollbar-none,
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes sceneFadeIn {
   from {
     opacity: 0;
@@ -498,4 +537,43 @@
 .dropdown-menu-popup[data-ending-style] {
   opacity: 0;
   transform: scale(0.95) translateY(-4px);
+}
+
+/* Minimal Scrollbar Styling (transparent track, sleek pill thumb) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scrollbar-none,
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
