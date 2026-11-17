@@ -1,12 +1,24 @@
-import type { ChangeEvent, RefObject } from 'react'
+import { type ChangeEvent, type RefObject, useMemo, useState } from 'react'
+import { ChevronDown, Cpu } from 'lucide-react'
 import type { AIState } from '@/components/ui/smoothui/ai-core'
 import AIPromptInput, { type AIPromptAttachment } from '@/components/ui/smoothui/ai-prompt-input'
+import type { AiModelOptionDto, AiProviderId } from '@/shared/types/ai'
+import { ModelPickerDialog } from './ModelPickerDialog'
 
 interface FactoryComposerProps {
   value: string
   state: AIState
   attachments: AIPromptAttachment[]
   fileInputRef: RefObject<HTMLInputElement>
+  availableModels?: AiModelOptionDto[]
+  activeProvider?: AiProviderId
+  activeModelId?: string
+  activeBaseUrl?: string
+  isAiConfigured?: boolean
+  isModelsLoading?: boolean
+  isSwitchingModel?: boolean
+  onSelectModel?: (modelId: string, provider: AiProviderId) => void
+  onOpenSettings?: () => void
   onValueChange: (value: string) => void
   onSubmit: (value: string) => void
   onStop: () => void
@@ -16,19 +28,37 @@ interface FactoryComposerProps {
 
 /**
  * Floating prompt composer docked at the bottom of the conversation pane,
- * paired with a hidden file picker input for user attachments.
+ * paired with a hidden file picker input and modal model/provider picker.
  */
 export function FactoryComposer({
   value,
   state,
   attachments,
   fileInputRef,
+  availableModels = [],
+  activeProvider = 'gateway',
+  activeModelId = '',
+  activeBaseUrl,
+  isAiConfigured = false,
+  isModelsLoading = false,
+  isSwitchingModel = false,
+  onSelectModel,
+  onOpenSettings,
   onValueChange,
   onSubmit,
   onStop,
   onRemoveAttachment,
   onFileChange,
 }: FactoryComposerProps) {
+  const [isModelDialogOpen, setIsModelDialogOpen] = useState(false)
+
+  const activeModel = useMemo(
+    () => availableModels.find((m) => m.id === activeModelId),
+    [activeModelId, availableModels]
+  )
+
+  const displayLabel = activeModel?.name || activeModelId || 'Select model'
+
   return (
     <>
       <input
@@ -54,9 +84,45 @@ export function FactoryComposer({
             placeholder="Ask anything…"
             state={state}
             value={value}
-          />
+          >
+            {onSelectModel && (
+              <button
+                type="button"
+                onClick={() => setIsModelDialogOpen(true)}
+                disabled={isSwitchingModel || state === 'thinking' || state === 'streaming'}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-[#D4D4D4] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                title={activeModelId ? `Model: ${activeModelId}` : 'Select AI provider & model'}
+              >
+                <Cpu className="size-3.5 text-[#8C8C8C] shrink-0" />
+                {isModelsLoading && !activeModelId ? (
+                  <span
+                    role="status"
+                    aria-label="Loading models"
+                    className="h-3 w-24 rounded shimmer-surface"
+                  />
+                ) : (
+                  <span className="max-w-52 truncate">{displayLabel}</span>
+                )}
+                <ChevronDown className="size-3 text-[#737373] shrink-0" />
+              </button>
+            )}
+          </AIPromptInput>
         </div>
       </div>
+
+      {onSelectModel && (
+        <ModelPickerDialog
+          open={isModelDialogOpen}
+          onOpenChange={setIsModelDialogOpen}
+          activeProvider={activeProvider}
+          activeModelId={activeModelId}
+          activeBaseUrl={activeBaseUrl}
+          isConfigured={isAiConfigured}
+          isSwitchingModel={isSwitchingModel}
+          onSelectModel={onSelectModel}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
     </>
   )
 }

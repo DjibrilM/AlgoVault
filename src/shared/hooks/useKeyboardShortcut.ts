@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 
 /**
- * Registers a Cmd/Ctrl + key shortcut listener on window.
+ * Registers a Cmd/Ctrl + key shortcut listener on window when running outside native menu control.
  */
-export function useKeyboardShortcut(key: string, callback: () => void) {
+export function useKeyboardShortcut(key: string, callback: () => void, enabled = true) {
   useEffect(() => {
+    if (!enabled) return
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === key.toLowerCase()) {
         e.preventDefault()
@@ -14,5 +16,5 @@ export function useKeyboardShortcut(key: string, callback: () => void) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [key, callback])
+  }, [key, callback, enabled])
 }

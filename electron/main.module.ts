@@ -18,6 +18,7 @@ import {
   migrateChallengesCategoryNonUnique,
   type CodeTestModuleOptions,
 } from './modules/code-test/index.ts'
+import { AI_ENTITIES, AiModule, type AiModuleOptions } from './modules/ai/index.ts'
 import { DatabaseModule, type DatabaseModuleOptions } from './modules/database/index.ts'
 import type { OnModuleInit, OnModuleDestroy } from './modules/code-test/common/lifecycle.ts'
 
@@ -26,6 +27,8 @@ export interface MainModuleOptions {
   ipcMain?: IpcMain
   /** Configuration overrides specifically for CodeTestModule */
   codeTest?: CodeTestModuleOptions
+  /** Configuration overrides specifically for AiModule */
+  ai?: AiModuleOptions
   /** Configuration overrides specifically for DatabaseModule */
   database?: DatabaseModuleOptions
 }
@@ -34,17 +37,19 @@ export interface MainModuleOptions {
  * NestJS Root Module.
  *
  * Encapsulates:
- * - `imports`: [DatabaseModule, CodeTestModule]
+ * - `imports`: [DatabaseModule, CodeTestModule, AiModule]
  */
 export class MainModule implements OnModuleInit, OnModuleDestroy {
   /** Core Module: TypeORM SQLite persistence */
   readonly databaseModule: DatabaseModule
   /** Feature Module: Code execution and SandboxVm management */
   readonly codeTestModule: CodeTestModule
+  /** Feature Module: Vercel AI SDK multi-agent orchestration */
+  readonly aiModule: AiModule
 
   constructor(options: MainModuleOptions = {}) {
     this.databaseModule = DatabaseModule.forRoot({
-      entities: [...CODE_TEST_ENTITIES],
+      entities: [...CODE_TEST_ENTITIES, ...AI_ENTITIES],
       ...options.database,
     })
 
@@ -52,6 +57,12 @@ export class MainModule implements OnModuleInit, OnModuleDestroy {
     this.codeTestModule = new CodeTestModule({
       ipcMain: options.ipcMain,
       ...options.codeTest,
+    })
+
+    this.aiModule = new AiModule({
+      ipcMain: options.ipcMain,
+      codeTestService: this.codeTestModule.service,
+      ...options.ai,
     })
   }
 
@@ -81,7 +92,10 @@ export class MainModule implements OnModuleInit, OnModuleDestroy {
     await seedDefaultCategories(dataSource)
     await seedDefaultChallenges(dataSource)
     this.codeTestModule.service.setDataSource(dataSource)
+    this.aiModule.service.setDataSource(dataSource)
+    this.aiModule.service.setCodeTestService(this.codeTestModule.service)
     await this.codeTestModule.onModuleInit()
+    this.aiModule.onModuleInit()
   }
 
   /**
@@ -89,6 +103,7 @@ export class MainModule implements OnModuleInit, OnModuleDestroy {
    * Gracefully tears down all imported feature modules in reverse order.
    */
   async onModuleDestroy(): Promise<void> {
+    await this.aiModule.onModuleDestroy()
     await this.codeTestModule.onModuleDestroy()
     await this.databaseModule.onModuleDestroy()
   }

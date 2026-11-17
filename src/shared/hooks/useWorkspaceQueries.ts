@@ -1,8 +1,10 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QUERY_KEYS } from '@/shared/lib/queryClient'
 import { databaseClient } from '@/shared/services/databaseClient'
+import { aiClient } from '@/shared/services/aiClient'
 import { challengeService } from '@/modules/challenge/services/challengeService'
 import type { Problem, SupportedLang } from '@/shared/types/problem'
+import type { AiProviderId, SaveAiConfigDto } from '@/shared/types/ai'
 
 export function useWorkspaceQuery() {
   return useQuery({
@@ -113,6 +115,41 @@ export function useSaveFactoryConversationMutation() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.factoryConversations })
     },
+  })
+}
+
+export function useAiConfigQuery() {
+  return useQuery({
+    queryKey: QUERY_KEYS.aiConfig,
+    queryFn: () => aiClient.getConfig(),
+    enabled: aiClient.isAvailable(),
+  })
+}
+
+export function useSaveAiConfigMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: SaveAiConfigDto) => aiClient.saveConfig(payload),
+    onSuccess: (nextStatus) => {
+      qc.setQueryData(QUERY_KEYS.aiConfig, nextStatus)
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.aiConfig })
+      void qc.invalidateQueries({ queryKey: ['ai-models'] })
+    },
+  })
+}
+
+export function useAiModelsQuery(provider?: AiProviderId, baseUrl?: string, enabled = true) {
+  return useQuery({
+    queryKey: QUERY_KEYS.aiModels(`${provider ?? 'active'}:${baseUrl ?? ''}`),
+    queryFn: () =>
+      provider
+        ? aiClient.listModels({
+            provider,
+            modelId: '',
+            ...(baseUrl !== undefined ? { baseUrl } : {}),
+          })
+        : aiClient.listModels(),
+    enabled,
   })
 }
 

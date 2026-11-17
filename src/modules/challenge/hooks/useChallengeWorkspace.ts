@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Problem, RunResult } from '@/shared/types/problem'
 import {
@@ -11,6 +11,7 @@ import {
   activeProblemsAtom,
   selectedLangAtom,
 } from '@/shared/store'
+import { useAppMenuAction } from '@/shared'
 import { useSubmitCodeMutation } from '@/shared/hooks/useWorkspaceQueries'
 import { challengeService } from '../services/challengeService'
 
@@ -120,6 +121,25 @@ export function useChallengeWorkspace(options?: UseChallengeWorkspaceOptions) {
       setIsRunning(false)
     }
   }
+
+  useEffect(() => {
+    window.appMenu?.syncState({ isRunning })
+    return () => {
+      window.appMenu?.syncState({ isRunning: false })
+    }
+  }, [isRunning])
+
+  useAppMenuAction((action) => {
+    if (action === 'challenge-run' && !isRunning) {
+      void handleRunCode()
+    } else if (action === 'challenge-submit' && !isRunning) {
+      void handleSubmitCode()
+    } else if (action === 'challenge-prev') {
+      handlePrevProblem()
+    } else if (action === 'challenge-next') {
+      handleNextProblem()
+    }
+  })
 
   return {
     code,

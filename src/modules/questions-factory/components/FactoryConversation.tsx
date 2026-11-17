@@ -64,19 +64,29 @@ export function FactoryConversation({
 
             <MessageContent className="select-text">
               {message.reasoning && (
-                <AIReasoning className="mb-2" collapseWhenDone isStreaming={false}>
+                <AIReasoning
+                  className="mb-2"
+                  collapseWhenDone
+                  isStreaming={Boolean(message.isStreaming)}
+                >
                   <p>{message.reasoning}</p>
                 </AIReasoning>
               )}
 
               {message.from === 'assistant' ? (
-                <MessageResponse>{message.content}</MessageResponse>
+                message.content ? (
+                  <MessageResponse>{message.content}</MessageResponse>
+                ) : message.isStreaming ? (
+                  <span className="text-xs text-[#737373] italic">Thinking…</span>
+                ) : null
               ) : (
                 message.content
               )}
             </MessageContent>
 
-            {message.from === 'assistant' && message.id !== 'welcome' && (
+            {message.from === 'assistant' &&
+              message.id !== 'welcome' &&
+              !message.isStreaming && (
               <MessageToolbar>
                 <MessageActions>
                   <MessageAction

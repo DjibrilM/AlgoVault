@@ -8,12 +8,24 @@ export interface StudioMessage {
   content: string
   attachments?: AIPromptAttachment[]
   reasoning?: string
+  isStreaming?: boolean
 }
 
 /** Destination workspace entity produced by a generation run. */
 export interface GeneratedTarget {
   name: string
   isMarathon: boolean
+}
+
+/** Visual choreography phase for the center-stage generation orb overlay. */
+export type GenerationOverlayPhase = 'idle' | 'preparing' | 'returning'
+
+/** Active step metadata displayed beneath the centered orb during generation. */
+export interface GenerationProcessStatus {
+  stepIndex: number
+  totalSteps: number
+  label: string
+  detail?: string
 }
 
 /** Hydrated Questions Factory conversation snapshot stored in history. */

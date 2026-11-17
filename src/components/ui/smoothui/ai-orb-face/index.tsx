@@ -6,18 +6,18 @@ import {
   type MotionValue,
   motion,
   useAnimationControls,
+  useAnimationFrame,
+  useMotionValue,
   useReducedMotion,
   useSpring,
+  useTransform,
 } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AIAmplitude,
   type AIState,
-  getAIStateMotion,
   useAmplitudeValue,
 } from "../ai-core";
-
-const EASE_LINEAR = [0, 0, 1, 1] as const;
 
 const VIEWBOX = 100;
 const CENTER = VIEWBOX / 2;
@@ -25,73 +25,59 @@ const EYE_OFFSET = 16;
 const EYE_Y = 44;
 const EYE_WIDTH = 11;
 const EYE_HEIGHT = 26;
-const EYE_RADIUS = 5.5;
 /** How far the pupils can travel from centre, in viewBox units. */
 const GAZE_RANGE = 5.5;
 /** Cursor distance, in px, at which the gaze reaches full deflection. */
 const GAZE_FALLOFF = 220;
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const EASE_IN = [0.4, 0, 1, 1] as const;
-/** A ~1.25-turn swirl; spun in place it reads as dizzy. */
-const SPIRAL = "M0 0C-0.6 -4 5 -5 6 -0.6C7 4.5 1 8 -4 6C-9 4.5 -9.5 -2 -6 -6";
+
 const BLINK_MIN_MS = 3200;
 const BLINK_EXTRA_MS = 2600;
 const DOUBLE_BLINK_CHANCE = 0.25;
-/** Thinking saccades: the eyes look away and up, the way people search. */
-const SACCADE_MIN_MS = 700;
-const SACCADE_EXTRA_MS = 700;
+
+const IDLE_GLANCE_DELAY_MS = 2400;
+const IDLE_GLANCE_INTERVAL_MIN_MS = 2200;
+const IDLE_GLANCE_INTERVAL_EXTRA_MS = 2400;
+
+/** Thinking saccades: eyes glance upward/sideways as if searching. */
+const SACCADE_MIN_MS = 550;
+const SACCADE_EXTRA_MS = 900;
 const SACCADE_TARGETS = [
-  { x: -1, y: -1 },
-  { x: 1, y: -1 },
-  { x: -0.6, y: -0.4 },
-  { x: 0.8, y: -0.9 },
+  { x: -1, y: -0.95 },
+  { x: 1, y: -0.95 },
+  { x: -0.65, y: -0.45 },
+  { x: 0.8, y: -0.85 },
+  { x: -0.25, y: -1 },
+  { x: 0.3, y: -0.55 },
 ] as const;
 
 /** Orb draws its sphere at this fraction of its box; the rest is glow room. */
 const ORB_SPHERE_FRACTION = 0.86;
 
-/** Amplitude buckets. Five steps is enough to see the interior stir. */
-const ENERGY_STEPS = 4;
+const clamp = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, value));
 
 /**
- * Amplitude as React state, quantised.
+ * An expression is two eyes, parameterized into curved Bezier silhouettes.
  *
- * Orb takes plain props, so the level has to cross into a render — and a motion
- * value changes every frame, which would re-render the whole character sixty
- * times a second to nudge one uniform. Rounding to a handful of buckets keeps
- * the reaction visible while the component renders a few times per utterance.
- */
-const useEnergyBucket = (value: MotionValue<number>) => {
-  const [bucket, setBucket] = useState(0);
-  useEffect(() => {
-    const read = (level: number) =>
-      setBucket(Math.round(level * ENERGY_STEPS) / ENERGY_STEPS);
-    read(value.get());
-    return value.on("change", read);
-  }, [value]);
-  return bucket;
-};
-
-/**
- * An expression is two eyes, and an eye is a rounded capsule.
- *
- * Four numbers describe every face this character can pull: how tall the
- * capsule is, how wide, how far it is rotated, and how far it sits from its
- * resting line. Tall and narrow is neutral; short and wide is a closed, content
- * eye; small is surprise; rotated inward is a scowl. Letting the two eyes carry
- * different values is what buys wink, doubt and mischief for free.
- *
- * There is no mouth. A drawn mouth on a shader body reads as a sticker stuck
- * onto it, and eyes alone are both more legible and more expressive — which is
- * why every avatar system built this way ends up eyes-only.
+ * `topArch` and `botArch` bend the vertical midpoints so the exact same SVG
+ * command topology morphs cleanly between tall neutral capsules, squinted bars,
+ * upward cheerful `⌒` crescents (`joy`), and outward-drooping `︶` sad eyes.
  */
 export interface EyeShape {
-  /** Vertical offset in viewBox units. Negative sits the eye higher. */
+  /** Center curvature bend in viewBox units. Negative arches upward (`^`), positive cups downward. */
+  arch?: number;
+  /** Optional independent bottom-edge curvature override. */
+  botArch?: number;
+  /** Vertical offset in viewBox units. Negative sits higher. */
   dy?: number;
-  /** Multiplier on the resting height. `0` is a shut eye. */
+  /** Multiplier on the resting height. */
   h: number;
-  /** Degrees. Positive tilts the inner corner down, which reads as a scowl. */
+  /** Degrees. Positive tilts top inward (`cross`); negative tilts outer edge down (`sad`). */
   rotate?: number;
+  /** Optional independent top-edge curvature override. */
+  topArch?: number;
   /** Multiplier on the resting width. */
   w: number;
 }
@@ -101,62 +87,161 @@ export interface Expression {
   right: EyeShape;
 }
 
-const EYE = (h: number, w = 1, rotate = 0, dy = 0): EyeShape => ({
+const EYE = (
+  h: number,
+  w = 1,
+  rotate = 0,
+  dy = 0,
+  topArch = 0,
+  botArch = topArch
+): EyeShape => ({
+  arch: topArch,
+  botArch,
   dy,
   h,
   rotate,
+  topArch,
   w,
 });
 
-/** Mirrored: the same tilt on both eyes, pointing at each other. */
-const symmetric = (h: number, w = 1, rotate = 0, dy = 0): Expression => ({
-  left: EYE(h, w, rotate, dy),
-  right: EYE(h, w, -rotate, dy),
+/** Mirrored: opposite rotation per eye so expressions remain symmetric. */
+const symmetric = (
+  h: number,
+  w = 1,
+  rotate = 0,
+  dy = 0,
+  topArch = 0,
+  botArch = topArch
+): Expression => ({
+  left: EYE(h, w, rotate, dy, topArch, botArch),
+  right: EYE(h, w, -rotate, dy, topArch, botArch),
 });
 
 export const EXPRESSIONS = {
   /** Wide. Paying attention. */
-  alert: symmetric(1.2, 1.05, 0, -1),
-  /** Eyes shut, curved down. Reads as content rather than asleep. */
-  content: symmetric(0.16, 1.25, 0, 2),
+  alert: symmetric(1.18, 1.06, 0, -1),
+  /** Upward joyful smile-arcs (`⌒ ⌒`). */
+  content: symmetric(0.24, 1.32, 0, 1, -6.0),
   /** Both eyes tilted inward. */
   cross: symmetric(0.85, 1, 18),
   /** Flat dashes. Unimpressed. */
   deadpan: symmetric(0.14, 1.35),
-  /** One eye narrowed. The face is not convinced. */
+  /** One eye narrowed. Pensive or skeptical. */
   doubtful: { left: EYE(1, 1), right: EYE(0.45, 1.1, -14) },
   /** Narrowed and level. Working on it. */
-  focused: symmetric(0.55, 1.05),
+  focused: symmetric(0.6, 1.06),
+  /** Wide bright upturned eager eyes — perked up at a second chance. */
+  hopeful: {
+    left: EYE(1.24, 1.12, 4, -2.4, -2.0, -0.4),
+    right: EYE(1.24, 1.12, -4, -2.4, -2.0, -0.4),
+  },
+  /** Upward joyful smile-arcs (`⌒ ⌒`). */
+  joy: symmetric(0.24, 1.32, 0, 1, -6.0),
   /** Resting. */
   neutral: symmetric(1),
+  /** Drooping outer corners with heavy downcast curves (`︶ ︶`). */
+  sad: {
+    left: EYE(0.24, 1.24, -18, 2.5, 4.5),
+    right: EYE(0.24, 1.24, 18, 2.5, 4.5),
+  },
   /** Small and high. Caught off guard. */
   surprised: symmetric(0.5, 0.55, 0, -3),
-  /** One shut, one open. */
-  wink: { left: EYE(1, 1), right: EYE(0.12, 1.2, 0, 2) },
+  /** One curved cheerful wink, one open. */
+  wink: { left: EYE(1, 1), right: EYE(0.2, 1.24, 0, 1.5, -4.5) },
 } satisfies Record<string, Expression>;
 
 export type ExpressionName = keyof typeof EXPRESSIONS;
 
-/**
- * The `state` prop keeps working; it now selects an expression instead of
- * branching into a bespoke pair of shapes per state.
- */
-const STATE_EXPRESSION: Record<string, ExpressionName> = {
-  done: "content",
-  error: "cross",
+const STATE_EXPRESSION: Record<AIState, ExpressionName> = {
+  done: "joy",
+  error: "sad",
   idle: "neutral",
   listening: "alert",
   streaming: "focused",
   thinking: "doubtful",
 };
 
+type StateShaderPreset = {
+  colors?: [string, string];
+  flow: number;
+  rim: number;
+  saturation: number;
+  specular: number;
+  speed: number;
+  turbulence: number;
+  wobble: number;
+};
+
+const STATE_SHADER: Record<AIState, StateShaderPreset> = {
+  done: {
+    flow: 0.76,
+    rim: 1.55,
+    saturation: 1,
+    specular: 0.28,
+    speed: 1.25,
+    turbulence: 0.38,
+    wobble: 0.22,
+  },
+  error: {
+    colors: ["oklch(58% 0.19 22)", "oklch(88% 0.05 20)"],
+    flow: 0.24,
+    rim: 0.85,
+    saturation: 0.82,
+    specular: 0.12,
+    speed: 0.32,
+    turbulence: 0.18,
+    wobble: 0.04,
+  },
+  idle: {
+    flow: 0.55,
+    rim: 1.25,
+    saturation: 1,
+    specular: 0.2,
+    speed: 0.7,
+    turbulence: 0.34,
+    wobble: 0.03,
+  },
+  listening: {
+    flow: 0.72,
+    rim: 1.48,
+    saturation: 1,
+    specular: 0.26,
+    speed: 1.15,
+    turbulence: 0.44,
+    wobble: 0.12,
+  },
+  streaming: {
+    flow: 0.85,
+    rim: 1.4,
+    saturation: 1,
+    specular: 0.24,
+    speed: 1.45,
+    turbulence: 0.54,
+    wobble: 0.14,
+  },
+  thinking: {
+    flow: 0.92,
+    rim: 1.35,
+    saturation: 1,
+    specular: 0.22,
+    speed: 2.2,
+    turbulence: 0.78,
+    wobble: 0.08,
+  },
+};
+
 export type AIOrbFaceProps = {
   /** Accessible label. Omit to keep the character decorative. */
   "aria-label"?: string;
-  /** Live audio level, 0–1. Widens the eyes and lifts the body while speaking. */
+  /** Live audio/activity level, 0–1. Drives fluid motion and voice breathing. */
   amplitude?: AIAmplitude;
   className?: string;
   colors?: { body?: string; bodyEdge?: string; feature?: string };
+  /**
+   * Set the face directly, ignoring `state`. Either a name from
+   * `EXPRESSIONS` or a pair of eye shapes of your own.
+   */
+  expression?: ExpressionName | Expression;
   /**
    * Follow the pointer with its gaze. Turn off inside dense UI where a dozen
    * of these tracking the cursor would be noise.
@@ -164,20 +249,16 @@ export type AIOrbFaceProps = {
   gaze?: boolean;
   /** Rendered size. Numbers are pixels. */
   size?: number | string;
-  state?: AIState;
   /**
-   * Set the face directly, ignoring `state`. Either a name from
-   * `EXPRESSIONS` or a pair of eye shapes of your own.
+   * Optional scale factor for motion translations (defaults to `size / 100` for numeric sizes).
+   * Pass `renderedPx / 100` when using a percentage `size` like `"100%"` across zoom transitions.
    */
-  expression?: ExpressionName | Expression;
+  motionScale?: number;
+  /** Incrementing trigger (`kind: 'hopeful'`) plays an optimistic second-chance perk bounce. */
+  moodImpulse?: { kind: "hopeful"; seq: number } | null;
+  state?: AIState;
 };
 
-/**
- * The two stops now feed Orb's palette rather than a two-stop gradient, and a
- * palette needs range. The previous pair sat within eight points of lightness
- * of each other, so the marbled interior had nothing to marble between and read
- * as flat lilac. Saturated against near-white is what makes the flow visible.
- */
 const DEFAULT_COLORS = {
   body: "oklch(72% 0.21 322)",
   bodyEdge: "oklch(97% 0.02 322)",
@@ -185,52 +266,216 @@ const DEFAULT_COLORS = {
 };
 
 /**
- * A little character rather than an indicator.
- *
- * Status is carried by expression — the thing humans read fastest and the reason
- * a literal checkmark stuck onto an orb feels wrong. Squints while it thinks,
- * eyes wide while it listens, happy arcs when it finishes, spiral-eyed when it
- * breaks. The gaze and blink cadence are borrowed from the SmoothUI moai so the
- * two feel like the same creature.
+ * Generates an eye path centered at `(0, 0)` with a fixed 6-cubic Bezier topology
+ * so Motion interpolates smoothly across neutral capsules, joyful arches, and sad curves.
+ */
+function buildEyePath(shape: EyeShape): string {
+  const width = EYE_WIDTH * shape.w;
+  const height = Math.max(EYE_HEIGHT * shape.h, 1.4);
+  const hw = width / 2;
+  const hh = height / 2;
+  const r = Math.min(hw, hh);
+  const capY = Math.max(0, hh - r);
+  const flatX = Math.max(0, hw - r);
+  const k = 0.5523;
+  const kx = flatX * 0.52 + k * r;
+
+  const tArch = shape.topArch ?? shape.arch ?? 0;
+  const bArch = shape.botArch ?? shape.arch ?? 0;
+  const meanArch = (tArch + bArch) * 0.5;
+  const edgeDrop = -meanArch * 0.42;
+
+  const endSlope = clamp(-meanArch / Math.max(hw, 1), -0.75, 0.75);
+  const ky = k * r * (1 - Math.abs(endSlope) * 0.45);
+  const tipOutX = r * 0.35 * Math.abs(endSlope);
+
+  const sideTopY = -capY + edgeDrop;
+  const sideBotY = capY + edgeDrop;
+  const topPeakY = -hh + tArch + edgeDrop;
+  const botTroughY = hh + bArch + edgeDrop;
+
+  const topTipDelta = tipOutX * (tArch < 0 ? 0.5 : -0.5);
+  const botTipDelta = tipOutX * (bArch > 0 ? 0.5 : -0.5);
+
+  const f = (n: number) => n.toFixed(2);
+
+  return [
+    `M ${f(-hw)} ${f(sideTopY)}`,
+    `C ${f(-hw - topTipDelta)} ${f(sideTopY - ky)} ${f(-kx)} ${f(topPeakY)} 0.00 ${f(topPeakY)}`,
+    `C ${f(kx)} ${f(topPeakY)} ${f(hw + topTipDelta)} ${f(sideTopY - ky)} ${f(hw)} ${f(sideTopY)}`,
+    `C ${f(hw)} ${f(sideTopY + capY * 0.33)} ${f(hw)} ${f(sideBotY - capY * 0.33)} ${f(hw)} ${f(sideBotY)}`,
+    `C ${f(hw + botTipDelta)} ${f(sideBotY + ky)} ${f(kx)} ${f(botTroughY)} 0.00 ${f(botTroughY)}`,
+    `C ${f(-kx)} ${f(botTroughY)} ${f(-hw - botTipDelta)} ${f(sideBotY + ky)} ${f(-hw)} ${f(sideBotY)}`,
+    `C ${f(-hw)} ${f(sideBotY - capY * 0.33)} ${f(-hw)} ${f(sideTopY + capY * 0.33)} ${f(-hw)} ${f(sideTopY)}`,
+    "Z",
+  ].join(" ");
+}
+
+interface OrbEyeProps {
+  fill: string;
+  gazeX: MotionValue<number>;
+  gazeY: MotionValue<number>;
+  lidControls: ReturnType<typeof useAnimationControls>;
+  shape: EyeShape;
+  shouldReduceMotion: boolean;
+  side: -1 | 1;
+}
+
+/**
+ * Single eye rendered inside nested SVG groups so spherical gaze projection,
+ * volume-preserving blinks, and shape morphing compose cleanly without jitter.
+ */
+function OrbEye({
+  fill,
+  gazeX,
+  gazeY,
+  lidControls,
+  shape,
+  shouldReduceMotion,
+  side,
+}: OrbEyeProps) {
+  const restX = CENTER + side * EYE_OFFSET;
+  const restY = EYE_Y + EYE_HEIGHT / 2;
+
+  const projX = useTransform(gazeX, (gx) => {
+    const compression = Math.max(0, side * (gx / GAZE_RANGE));
+    return restX + gx * (1 - compression * 0.14);
+  });
+
+  const projY = useTransform([gazeX, gazeY], (values: number[]) => {
+    const [gx, gy] = values;
+    const edgeDrop = Math.abs(gx / GAZE_RANGE) * 0.55 * (gy >= 0 ? 1 : -0.6);
+    return restY + gy + edgeDrop;
+  });
+
+  const projScaleX = useTransform(gazeX, (gx) => {
+    const lead = clamp(side * (gx / GAZE_RANGE), -0.25, 1);
+    return 1 - Math.max(0, lead) * 0.15;
+  });
+
+  const projRotate = useTransform([gazeX, gazeY], (values: number[]) => {
+    const [gx, gy] = values;
+    return (gx / GAZE_RANGE) * (gy / GAZE_RANGE) * side * 3.5;
+  });
+
+  const eyePath = buildEyePath(shape);
+  const morphTransition = shouldReduceMotion
+    ? { duration: 0 }
+    : { bounce: 0.16, duration: 0.28, type: "spring" as const };
+
+  return (
+    <motion.g
+      style={{
+        rotate: projRotate,
+        scaleX: projScaleX,
+        transformOrigin: "0px 0px",
+        x: projX,
+        y: projY,
+      }}
+    >
+      <motion.g
+        animate={lidControls}
+        initial={{ scaleX: 1, scaleY: 1, y: 0 }}
+        style={{ transformOrigin: "0px 0px" }}
+      >
+        <motion.g
+          animate={{ rotate: shape.rotate ?? 0, y: shape.dy ?? 0 }}
+          style={{ transformOrigin: "0px 0px" }}
+          transition={morphTransition}
+        >
+          <motion.path
+            animate={{ d: eyePath }}
+            fill={fill}
+            initial={false}
+            transition={morphTransition}
+          />
+        </motion.g>
+      </motion.g>
+    </motion.g>
+  );
+}
+
+/**
+ * Expressive AI character combining a WebGL2 marbling sphere with organically
+ * choreographed face motions: spherical eye parallax, idle curiosity glances,
+ * elastic blinks, joyful multi-bounce leaps on `done`, and deflated sadness on `error`.
  */
 const AIOrbFace = ({
   "aria-label": ariaLabel,
   amplitude,
   className,
   colors,
-  gaze = true,
   expression,
+  gaze = true,
+  moodImpulse,
+  motionScale,
   size = 128,
   state = "idle",
 }: AIOrbFaceProps) => {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = Boolean(useReducedMotion());
   const amplitudeValue = useAmplitudeValue(amplitude);
-  const stateMotion = getAIStateMotion(state);
-  const finalColors = { ...DEFAULT_COLORS, ...colors };
+  const stateShader = STATE_SHADER[state] ?? STATE_SHADER.idle;
+  const bodyColor =
+    colors?.body ?? stateShader.colors?.[0] ?? DEFAULT_COLORS.body;
+  const bodyEdgeColor =
+    colors?.bodyEdge ?? stateShader.colors?.[1] ?? DEFAULT_COLORS.bodyEdge;
+  const featureColor = colors?.feature ?? DEFAULT_COLORS.feature;
 
-  // Gradient ids must be unique per instance, or a second face on the page
-  // silently repaints the first one's body.
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const energy = useEnergyBucket(amplitudeValue);
   const leftLid = useAnimationControls();
   const rightLid = useAnimationControls();
-  const bodyControls = useAnimationControls();
+  const gestureControls = useAnimationControls();
 
-  const gazeX = useSpring(0, { damping: 26, stiffness: 220 });
-  const gazeY = useSpring(0, { damping: 26, stiffness: 220 });
+  // Scale translation distances cleanly so both 28px header and 128px hero sizes move naturally
+  const pxScale =
+    typeof motionScale === "number"
+      ? Math.max(0.24, motionScale)
+      : typeof size === "number"
+        ? Math.max(0.24, size / 100)
+        : 1;
+
+  const gazeX = useSpring(0, { damping: 24, stiffness: 240 });
+  const gazeY = useSpring(0, { damping: 24, stiffness: 240 });
+
+  const liveX = useMotionValue(0);
+  const liveY = useMotionValue(0);
+  const liveScaleX = useMotionValue(1);
+  const liveScaleY = useMotionValue(1);
+  const liveRotate = useMotionValue(0);
+
+  const orbLightX = useTransform(gazeX, (gx) => -0.6 + (gx / GAZE_RANGE) * 0.22);
+  const orbLightY = useTransform(gazeY, (gy) => -1.0 + (gy / GAZE_RANGE) * 0.22);
 
   const resolvedSize = typeof size === "number" ? `${size}px` : size;
 
-  const isHappy = state === "done";
+  const isDone = state === "done";
   const isThinking = state === "thinking";
+  const isError = state === "error";
   const isListening = state === "listening";
-  const isBroken = state === "error";
-  const eyesOpen = !isBroken;
+  const isStreaming = state === "streaming";
+  const isIdle = state === "idle";
 
-  /**
-   * Explicit `expression` wins; otherwise the state picks one. A caller can
-   * also pass a pair of eye shapes that is not in the preset list at all.
-   */
+  const [hopefulSeqActive, setHopefulSeqActive] = useState(0);
+  const lastHandledImpulseRef = useRef(0);
+  const isHopefulMood = hopefulSeqActive > 0 && !isError && !isDone;
+
+  useEffect(() => {
+    if (isError || isDone) {
+      setHopefulSeqActive(0);
+      return;
+    }
+    const seq = moodImpulse?.kind === "hopeful" ? moodImpulse.seq : 0;
+    if (seq <= 0 || seq === lastHandledImpulseRef.current) {
+      return;
+    }
+    lastHandledImpulseRef.current = seq;
+    setHopefulSeqActive(seq);
+    const timerId = window.setTimeout(() => {
+      setHopefulSeqActive((cur) => (cur === seq ? 0 : cur));
+    }, 1450);
+    return () => window.clearTimeout(timerId);
+  }, [isDone, isError, moodImpulse]);
+
   const active: Expression = (() => {
     if (typeof expression === "object") {
       return expression;
@@ -238,13 +483,17 @@ const AIOrbFace = ({
     if (expression) {
       return EXPRESSIONS[expression];
     }
+    if (isHopefulMood) {
+      return EXPRESSIONS.hopeful;
+    }
     return EXPRESSIONS[STATE_EXPRESSION[state] ?? "neutral"];
   })();
 
-  // A blink spans several awaits, so the component can unmount mid-blink — a
-  // route change, a state that hides the eyes. Animation controls throw if they
-  // are driven after unmount, so every leg checks first.
   const mountedRef = useRef(false);
+  const lastPointerAtRef = useRef(0);
+  const prevStateRef = useRef<AIState>(state);
+  const lastSaccadeIdxRef = useRef(-1);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -252,48 +501,92 @@ const AIOrbFace = ({
     };
   }, []);
 
-  // Snap shut, ease back open — an even-timed blink reads as a machine.
+  // Elastic, volume-preserving blink with subtle left/right asymmetry
   const blink = useCallback(
     async (double = false) => {
-      const closeT = { duration: 0.07, ease: EASE_IN };
+      if (!mountedRef.current || shouldReduceMotion) {
+        return;
+      }
+      const closeT = { duration: 0.065, ease: EASE_IN };
       const openT = { duration: 0.16, ease: EASE_OUT };
+
+      const closeLeft = leftLid.start(
+        { scaleX: 1.14, scaleY: 0.08, y: 1.1 },
+        closeT
+      );
+      const closeRight = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          if (!mountedRef.current) {
+            resolve();
+            return;
+          }
+          void rightLid
+            .start({ scaleX: 1.14, scaleY: 0.08, y: 1.1 }, closeT)
+            .then(resolve);
+        }, 14);
+      });
+      await Promise.all([closeLeft, closeRight]);
+
       if (!mountedRef.current) {
         return;
       }
-      await Promise.all([
-        leftLid.start({ scaleY: 0.08 }, closeT),
-        rightLid.start({ scaleY: 0.08 }, closeT),
-      ]);
-      if (!mountedRef.current) {
-        return;
-      }
-      await Promise.all([
-        leftLid.start({ scaleY: 1 }, double ? closeT : openT),
-        rightLid.start({ scaleY: 1 }, double ? closeT : openT),
-      ]);
+
       if (double) {
-        await blink(false);
+        await Promise.all([
+          leftLid.start({ scaleX: 1, scaleY: 0.9, y: 0 }, closeT),
+          rightLid.start({ scaleX: 1, scaleY: 0.9, y: 0 }, closeT),
+        ]);
+        if (mountedRef.current) {
+          await blink(false);
+        }
+        return;
       }
+
+      await Promise.all([
+        leftLid.start(
+          { scaleX: [1.14, 0.97, 1], scaleY: [0.08, 1.05, 1], y: [1.1, -0.35, 0] },
+          openT
+        ),
+        rightLid.start(
+          { scaleX: [1.14, 0.97, 1], scaleY: [0.08, 1.05, 1], y: [1.1, -0.35, 0] },
+          openT
+        ),
+      ]);
     },
-    [leftLid, rightLid]
+    [leftLid, rightLid, shouldReduceMotion]
   );
 
-  // Idle blinking, occasionally a double.
+  // Trigger a crisp transition blink when shifting attention between states
   useEffect(() => {
-    if (shouldReduceMotion || !eyesOpen) {
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
+    if (shouldReduceMotion || prev === state) {
+      return;
+    }
+    if (state === "listening" || state === "done" || state === "streaming") {
+      void blink(false);
+    }
+  }, [blink, shouldReduceMotion, state]);
+
+  // Ambient blink cadence (slightly slower, heavier cadence when sad in error state)
+  useEffect(() => {
+    if (shouldReduceMotion || isDone) {
       return;
     }
     let timeout: ReturnType<typeof setTimeout>;
     let mounted = true;
+    const minWait = isError ? 4200 : BLINK_MIN_MS;
+    const extraWait = isError ? 2400 : BLINK_EXTRA_MS;
+
     const schedule = () => {
       timeout = setTimeout(
         () => {
           if (mounted) {
-            blink(Math.random() < DOUBLE_BLINK_CHANCE);
+            void blink(!isError && Math.random() < DOUBLE_BLINK_CHANCE);
           }
           schedule();
         },
-        BLINK_MIN_MS + Math.random() * BLINK_EXTRA_MS
+        minWait + Math.random() * extraWait
       );
     };
     schedule();
@@ -301,12 +594,11 @@ const AIOrbFace = ({
       mounted = false;
       clearTimeout(timeout);
     };
-  }, [blink, eyesOpen, shouldReduceMotion]);
+  }, [blink, isDone, isError, shouldReduceMotion]);
 
-  // Gaze follows the pointer, except while thinking — then it looks away, which
-  // is exactly what makes "thinking" legible without any added graphic.
+  // Pointer gaze tracking during idle, listening, and streaming
   useEffect(() => {
-    if (!gaze || shouldReduceMotion || isThinking || !eyesOpen) {
+    if (!gaze || shouldReduceMotion || isThinking || isError || isDone) {
       return;
     }
     const handle = (event: PointerEvent) => {
@@ -314,6 +606,7 @@ const AIOrbFace = ({
       if (!svg) {
         return;
       }
+      lastPointerAtRef.current = performance.now();
       const rect = svg.getBoundingClientRect();
       const dx = event.clientX - (rect.left + rect.width / 2);
       const dy = event.clientY - (rect.top + rect.height / 2);
@@ -323,26 +616,81 @@ const AIOrbFace = ({
       gazeX.set(Math.cos(angle) * reach);
       gazeY.set(Math.sin(angle) * reach);
     };
-    window.addEventListener("pointermove", handle);
+    window.addEventListener("pointermove", handle, { passive: true });
     return () => window.removeEventListener("pointermove", handle);
-  }, [gaze, gazeX, gazeY, isThinking, eyesOpen, shouldReduceMotion]);
+  }, [gaze, gazeX, gazeY, isDone, isError, isThinking, shouldReduceMotion]);
 
-  // Thinking saccades.
+  // Idle curiosity glances when the pointer has been still
   useEffect(() => {
-    if (!isThinking || shouldReduceMotion) {
+    if (!isIdle || shouldReduceMotion) {
       return;
     }
     let timeout: ReturnType<typeof setTimeout>;
+    let returnTimeout: ReturnType<typeof setTimeout>;
     let mounted = true;
-    let index = 0;
+
     const schedule = () => {
       timeout = setTimeout(
         () => {
           if (!mounted) {
             return;
           }
-          const target = SACCADE_TARGETS[index % SACCADE_TARGETS.length];
-          index += 1;
+          const msSincePointer = performance.now() - lastPointerAtRef.current;
+          if (msSincePointer > IDLE_GLANCE_DELAY_MS) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = (0.3 + Math.random() * 0.4) * GAZE_RANGE;
+            gazeX.set(Math.cos(angle) * radius);
+            gazeY.set(Math.sin(angle) * radius * 0.7);
+            clearTimeout(returnTimeout);
+            returnTimeout = setTimeout(
+              () => {
+                if (
+                  mounted &&
+                  performance.now() - lastPointerAtRef.current >
+                    IDLE_GLANCE_DELAY_MS
+                ) {
+                  gazeX.set(0);
+                  gazeY.set(0);
+                }
+              },
+              900 + Math.random() * 700
+            );
+          }
+          schedule();
+        },
+        IDLE_GLANCE_INTERVAL_MIN_MS +
+          Math.random() * IDLE_GLANCE_INTERVAL_EXTRA_MS
+      );
+    };
+    schedule();
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      clearTimeout(returnTimeout);
+    };
+  }, [gazeX, gazeY, isIdle, shouldReduceMotion]);
+
+  // Randomized non-repeating upward saccades while thinking
+  useEffect(() => {
+    if (!isThinking || shouldReduceMotion) {
+      return;
+    }
+    let timeout: ReturnType<typeof setTimeout>;
+    let mounted = true;
+
+    const schedule = () => {
+      timeout = setTimeout(
+        () => {
+          if (!mounted) {
+            return;
+          }
+          let nextIdx = Math.floor(Math.random() * SACCADE_TARGETS.length);
+          if (nextIdx === lastSaccadeIdxRef.current) {
+            nextIdx = (nextIdx + 1) % SACCADE_TARGETS.length;
+          }
+          lastSaccadeIdxRef.current = nextIdx;
+          const target = SACCADE_TARGETS[nextIdx];
           gazeX.set(target.x * GAZE_RANGE);
           gazeY.set(target.y * GAZE_RANGE);
           schedule();
@@ -357,126 +705,247 @@ const AIOrbFace = ({
     };
   }, [gazeX, gazeY, isThinking, shouldReduceMotion]);
 
-  // Error: one dizzy wobble.
+  // Discrete emotional choreographies: joyful double-bounce (`done`) and sad slump (`error`)
   useEffect(() => {
-    if (!isBroken) {
-      return;
-    }
-    gazeX.set(0);
-    gazeY.set(0);
+    let activeRun = true;
+
     if (shouldReduceMotion) {
+      gestureControls.set({ rotate: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 });
+      if (isError) {
+        gazeX.set(-0.22 * GAZE_RANGE);
+        gazeY.set(0.65 * GAZE_RANGE);
+      } else if (isDone) {
+        gazeX.set(0);
+        gazeY.set(-0.2 * GAZE_RANGE);
+      }
       return;
     }
-    // The wobble plays once, but the spiral eyes stay for as long as the state
-    // is `error`. Recovering to a neutral face after a couple of seconds would
-    // leave a broken assistant looking fine.
-    bodyControls.start(
-      { rotate: [0, -11, 9, -7, 5, -3, 0], x: [0, -5, 4, -3, 2, -1, 0] },
-      { duration: 1.05, ease: [0.45, 0, 0.55, 1] }
-    );
-  }, [bodyControls, gazeX, gazeY, isBroken, shouldReduceMotion]);
 
-  // Done: a happy hop. The squash-and-stretch is the whole payload.
-  useEffect(() => {
-    if (!isHappy || shouldReduceMotion) {
-      return;
-    }
-    bodyControls.start(
-      {
-        scaleX: [1, 1.08, 0.94, 1.04, 0.99, 1],
-        scaleY: [1, 0.9, 1.08, 0.95, 1.02, 1],
-        y: [0, 3, -9, 0, -3, 0],
-      },
-      { duration: 0.85, ease: EASE_OUT, times: [0, 0.12, 0.4, 0.62, 0.82, 1] }
-    );
-  }, [bodyControls, isHappy, shouldReduceMotion]);
+    if (isDone) {
+      gazeX.set(0);
+      gazeY.set(-0.22 * GAZE_RANGE);
+      const jumpPeak = -26 * pxScale;
+      const hopPeak = -13 * pxScale;
+      const crouchY = 3.5 * pxScale;
 
-  // Listening: the body breathes with the voice. Driven from the MotionValue so
-  // a 60fps audio signal never re-renders this component.
-  useEffect(() => {
-    if (shouldReduceMotion || !isListening) {
-      return;
-    }
-    const unsubscribe = amplitudeValue.on("change", (level) => {
-      bodyControls.set({ scale: 1 + level * 0.07, y: -level * 2 });
-    });
-    return unsubscribe;
-  }, [amplitudeValue, bodyControls, isListening, shouldReduceMotion]);
-
-  // Reset the breathing here rather than in the effect above. Animation
-  // controls reject `set()` after unmount, and an unsubscribe cleanup is
-  // exactly when the component may already be gone.
-  useEffect(() => {
-    if (!(isListening || !mountedRef.current)) {
-      bodyControls.set({ scale: 1, y: 0 });
-    }
-  }, [bodyControls, isListening]);
-
-  const renderEye = (side: -1 | 1) => {
-    const shape = side === -1 ? active.left : active.right;
-    const controls = side === -1 ? leftLid : rightLid;
-
-    const width = EYE_WIDTH * shape.w;
-    const height = EYE_HEIGHT * shape.h;
-    const x = CENTER + side * EYE_OFFSET - width / 2;
-    // Keep the eye centred as it opens and closes, so a squint reads as lids
-    // meeting rather than the eye sliding up the face.
-    const y = EYE_Y + (EYE_HEIGHT - height) / 2 + (shape.dy ?? 0);
-    const cx = x + width / 2;
-    const cy = y + height / 2;
-
-    return (
-      <motion.rect
-        animate={controls}
-        fill={finalColors.feature}
-        height={Math.max(height, 0.5)}
-        initial={{ scaleY: 1 }}
-        // A capsule at any height: at full height this is a rounded bar, and as
-        // the eye shuts the radius follows it down into a lozenge instead of
-        // squashing a fixed corner into a rectangle.
-        rx={Math.min(EYE_RADIUS * shape.w, Math.max(height, 0.5) / 2)}
-        style={{
-          rotate: shape.rotate ?? 0,
-          transformOrigin: `${cx}px ${cy}px`,
-          x: gazeX,
-          y: gazeY,
-        }}
-        transition={
-          shouldReduceMotion
-            ? { duration: 0 }
-            : { bounce: 0.1, duration: 0.25, type: "spring" }
+      void gestureControls.start(
+        {
+          rotate: [0, -2, -7, 5, 6, -3, 0],
+          scaleX: [1, 1.14, 0.87, 1.13, 0.92, 1.06, 1],
+          scaleY: [1, 0.84, 1.16, 0.86, 1.1, 0.94, 1],
+          x: [0, 0, -2 * pxScale, 1.5 * pxScale, 2 * pxScale, -1 * pxScale, 0],
+          y: [0, crouchY, jumpPeak, crouchY * 0.8, hopPeak, crouchY * 0.4, 0],
+        },
+        {
+          duration: 1.15,
+          ease: EASE_OUT,
+          times: [0, 0.1, 0.34, 0.52, 0.7, 0.86, 1],
         }
-        width={width}
-        x={x}
-        y={y}
-      />
-    );
-  };
+      );
 
-  const renderDizzyEye = (side: -1 | 1) => (
-    <motion.path
-      animate={shouldReduceMotion ? undefined : { rotate: 360 * side }}
-      d={SPIRAL}
-      fill="none"
-      stroke={finalColors.feature}
-      strokeLinecap="round"
-      strokeWidth={3}
-      style={{
-        scale: 1.5,
-        x: CENTER + side * EYE_OFFSET,
-        y: EYE_Y + EYE_HEIGHT / 2,
-      }}
-      transition={{
-        duration: 2.4,
-        ease: EASE_LINEAR,
-        repeat: Number.POSITIVE_INFINITY,
-      }}
-    />
-  );
+      return () => {
+        activeRun = false;
+      };
+    }
+
+    if (isError) {
+      // Downcast apologetic gaze toward the floor
+      gazeX.set(-0.24 * GAZE_RANGE);
+      gazeY.set(0.68 * GAZE_RANGE);
+
+      void (async () => {
+        await gestureControls.start(
+          {
+            rotate: [0, -4, 4, -3, -7, -5.5],
+            scaleX: [1, 0.99, 1.02, 1.04, 1.07, 1.05],
+            scaleY: [1, 1.01, 0.97, 0.94, 0.9, 0.92],
+            x: [
+              0,
+              -3.5 * pxScale,
+              3.5 * pxScale,
+              -2.5 * pxScale,
+              2 * pxScale,
+              0,
+            ],
+            y: [
+              0,
+              -1 * pxScale,
+              1.5 * pxScale,
+              4 * pxScale,
+              8 * pxScale,
+              9.5 * pxScale,
+            ],
+          },
+          {
+            duration: 0.78,
+            ease: [0.32, 0, 0.45, 1],
+            times: [0, 0.12, 0.26, 0.46, 0.76, 1],
+          }
+        );
+        if (!activeRun || !mountedRef.current) {
+          return;
+        }
+        // Settle softly into ongoing dejected posture until error clears
+        void gestureControls.start(
+          {
+            rotate: -4.5,
+            scaleX: 1.04,
+            scaleY: 0.94,
+            x: 0,
+            y: 7.5 * pxScale,
+          },
+          { damping: 20, stiffness: 110, type: "spring" }
+        );
+      })();
+
+      return () => {
+        activeRun = false;
+      };
+    }
+
+    if (isHopefulMood) {
+      // Bright childlike perk-up gaze upward toward the user on being given a second chance
+      gazeX.set(0.08 * GAZE_RANGE);
+      gazeY.set(-0.34 * GAZE_RANGE);
+
+      void gestureControls.start(
+        {
+          rotate: [-4, 7, -6, 5, -3, 2, 0],
+          scaleX: [1.04, 0.9, 1.12, 0.91, 1.08, 0.97, 1],
+          scaleY: [0.94, 1.12, 0.88, 1.1, 0.93, 1.04, 1],
+          x: [
+            0,
+            2 * pxScale,
+            -2.5 * pxScale,
+            2 * pxScale,
+            -1.5 * pxScale,
+            0.5 * pxScale,
+            0,
+          ],
+          y: [
+            7 * pxScale,
+            -18 * pxScale,
+            2 * pxScale,
+            -12 * pxScale,
+            1 * pxScale,
+            -4 * pxScale,
+            0,
+          ],
+        },
+        {
+          duration: 1.15,
+          ease: EASE_OUT,
+          times: [0, 0.22, 0.4, 0.58, 0.74, 0.88, 1],
+        }
+      );
+
+      return () => {
+        activeRun = false;
+      };
+    }
+
+    // Smooth spring recovery back to neutral posture when leaving done / error
+    void gestureControls.start(
+      { rotate: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+      { damping: 18, stiffness: 180, type: "spring" }
+    );
+
+    return () => {
+      activeRun = false;
+    };
+  }, [
+    gestureControls,
+    gazeX,
+    gazeY,
+    isDone,
+    isError,
+    isHopefulMood,
+    pxScale,
+    shouldReduceMotion,
+  ]);
+
+  // Continuous 60fps organic motion layer: breathing, head follow-through, speaking pulses, and sad sighs
+  useAnimationFrame((time, delta) => {
+    const dtSec = Math.min(delta / 1000, 0.05);
+    const alpha = 1 - Math.exp(-dtSec * 8.5);
+
+    if (shouldReduceMotion) {
+      liveX.set(0);
+      liveY.set(0);
+      liveScaleX.set(1);
+      liveScaleY.set(1);
+      liveRotate.set(0);
+      return;
+    }
+
+    const t = time / 1000;
+    const gx = gazeX.get() / GAZE_RANGE;
+    const gy = gazeY.get() / GAZE_RANGE;
+    const amp = amplitudeValue.get();
+
+    const followX = gx * 2.2 * pxScale;
+    const followY = gy * 2.0 * pxScale;
+    const followRot = gx * 3.2;
+
+    let tx = followX;
+    let ty = followY;
+    let tsx = 1;
+    let tsy = 1;
+    let trot = followRot;
+
+    if (isHopefulMood) {
+      const bounce = Math.abs(Math.sin(t * 4.4));
+      ty = followY - bounce * 2.4 * pxScale;
+      tsx = 1 + bounce * 0.025;
+      tsy = 1 - bounce * 0.015;
+      trot = followRot + Math.sin(t * 2.8) * 3.0;
+    } else if (isIdle) {
+      const breath = Math.sin(t * 1.45) * 0.65 + Math.sin(t * 2.35 + 1.1) * 0.35;
+      ty = followY - breath * 1.6 * pxScale;
+      tsx = 1 + breath * 0.011;
+      tsy = 1 - breath * 0.008;
+      trot = followRot + Math.sin(t * 0.9) * 1.1;
+    } else if (isListening) {
+      ty = followY - amp * 4.5 * pxScale;
+      tsx = 1 + amp * 0.055;
+      tsy = 1 + amp * 0.07;
+    } else if (isThinking) {
+      const sway = Math.sin(t * 1.6);
+      tx = followX + sway * 1.1 * pxScale;
+      ty = followY - Math.abs(Math.cos(t * 1.2)) * 1.2 * pxScale;
+      tsx = 1 + amp * 0.018;
+      tsy = 1 - amp * 0.012;
+      trot = followRot - 3.5 + sway * 2.2;
+    } else if (isStreaming) {
+      const nod = Math.sin(t * 4.2) * 0.35 + amp * 0.65;
+      ty = followY - nod * 2.8 * pxScale;
+      tsx = 1 + amp * 0.04;
+      tsy = 1 + amp * 0.055;
+      trot = followRot + Math.sin(t * 2.6) * 1.8;
+    } else if (isDone) {
+      const happyBob = Math.sin(t * 4.8) * 1.1;
+      ty = followY - happyBob * pxScale;
+      tsx = 1.02;
+      tsy = 1.02;
+    } else if (isError) {
+      // Heavy slow chest sigh while slumped
+      const sigh = 0.5 - 0.5 * Math.cos(t * 2.1);
+      tx = 0;
+      ty = sigh * 1.8 * pxScale;
+      tsx = 1 + sigh * 0.025;
+      tsy = 1 - sigh * 0.025;
+      trot = Math.sin(t * 1.1) * 1.2;
+    }
+
+    liveX.set(liveX.get() + (tx - liveX.get()) * alpha);
+    liveY.set(liveY.get() + (ty - liveY.get()) * alpha);
+    liveScaleX.set(liveScaleX.get() + (tsx - liveScaleX.get()) * alpha);
+    liveScaleY.set(liveScaleY.get() + (tsy - liveScaleY.get()) * alpha);
+    liveRotate.set(liveRotate.get() + (trot - liveRotate.get()) * alpha);
+  });
 
   // Orb draws its sphere at 86% of its own box, so the box is scaled up by
-  // that much to land the sphere exactly on the r=48 circle the face was drawn
-  // around. Both layers carry the same controls, so it breathes as one object.
+  // that much to land the sphere exactly on the r=48 circle the face was drawn around.
   const bodySpan = (96 / VIEWBOX / ORB_SPHERE_FRACTION) * 100;
   const bodyInset = (100 - bodySpan) / 2;
 
@@ -484,62 +953,108 @@ const AIOrbFace = ({
     <div
       className={cn("relative block", className)}
       style={{
-        filter: `saturate(${stateMotion.saturation})`,
+        filter: `saturate(${stateShader.saturation})`,
         height: resolvedSize,
+        transition: "filter 320ms ease",
         width: resolvedSize,
       }}
     >
       <motion.div
-        animate={bodyControls}
-        className="absolute"
-        style={{
-          height: `${bodySpan}%`,
-          left: `${bodyInset}%`,
-          top: `${bodyInset}%`,
-          width: `${bodySpan}%`,
-        }}
+        animate={gestureControls}
+        className="relative size-full"
+        initial={{ rotate: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 }}
       >
-        {/* Painted understudy for the shader: on pages running many WebGL
-            surfaces the browser reclaims the oldest contexts, and a reclaimed
-            Orb leaves a blank canvas — which turned the character into a pair
-            of floating eyes. This circle sits exactly under the sphere so the
-            body survives losing its context. */}
-        <div
-          aria-hidden
-          className="absolute rounded-full"
+        <motion.div
+          className="relative size-full"
           style={{
-            background: `radial-gradient(circle at 34% 30%, ${finalColors.bodyEdge}, ${finalColors.body} 72%)`,
-            inset: `${(1 - ORB_SPHERE_FRACTION) * 50}%`,
+            rotate: liveRotate,
+            scaleX: liveScaleX,
+            scaleY: liveScaleY,
+            x: liveX,
+            y: liveY,
           }}
-        />
-        <Orb
-          className="size-full"
-          colors={[finalColors.body, finalColors.bodyEdge]}
-          // Speaking stirs the interior, so the character looks like it is
-          // doing something inside rather than only changing size.
-          flow={0.6 + energy * 0.36}
-          // The halo would spill past the silhouette the features sit against.
-          glow={0}
-          size="100%"
-          turbulence={0.4 + energy * 0.32}
-        />
-      </motion.div>
-      <motion.svg
-        animate={bodyControls}
-        aria-hidden={ariaLabel ? undefined : true}
-        aria-label={ariaLabel}
-        className="absolute inset-0 block size-full overflow-visible"
-        ref={svgRef}
-        role={ariaLabel ? "img" : undefined}
-        viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
-      >
-        <title>{ariaLabel ?? "AI assistant character"}</title>
+        >
+          <div
+            className="absolute"
+            style={{
+              height: `${bodySpan}%`,
+              left: `${bodyInset}%`,
+              top: `${bodyInset}%`,
+              width: `${bodySpan}%`,
+            }}
+          >
+            {/* Painted understudy so the body survives WebGL context reclamation */}
+            <div
+              aria-hidden
+              className="absolute rounded-full"
+              style={{
+                background: `radial-gradient(circle at 34% 30%, ${bodyEdgeColor}, ${bodyColor} 72%)`,
+                inset: `${(1 - ORB_SPHERE_FRACTION) * 50}%`,
+              }}
+            />
+            <Orb
+              amplitude={amplitudeValue}
+              className="size-full"
+              colors={[bodyColor, bodyEdgeColor]}
+              flow={stateShader.flow}
+              glow={0}
+              grain={0.14}
+              lightX={orbLightX}
+              lightY={orbLightY}
+              rim={stateShader.rim}
+              size="100%"
+              softness={0.0015}
+              specular={stateShader.specular}
+              speed={stateShader.speed}
+              turbulence={stateShader.turbulence}
+              wobble={stateShader.wobble}
+            />
+          </div>
 
-        {isBroken ? null : renderEye(-1)}
-        {isBroken ? null : renderEye(1)}
-        {isBroken && renderDizzyEye(-1)}
-        {isBroken && renderDizzyEye(1)}
-      </motion.svg>
+          <motion.svg
+            aria-hidden={ariaLabel ? undefined : true}
+            aria-label={ariaLabel}
+            className="absolute inset-0 block size-full overflow-visible"
+            ref={svgRef}
+            role={ariaLabel ? "img" : undefined}
+            shapeRendering="geometricPrecision"
+            viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
+          >
+            <title>{ariaLabel ?? "AI assistant character"}</title>
+
+            <OrbEye
+              fill={featureColor}
+              gazeX={gazeX}
+              gazeY={gazeY}
+              lidControls={leftLid}
+              shape={active.left}
+              shouldReduceMotion={shouldReduceMotion}
+              side={-1}
+            />
+            <OrbEye
+              fill={featureColor}
+              gazeX={gazeX}
+              gazeY={gazeY}
+              lidControls={rightLid}
+              shape={active.right}
+              shouldReduceMotion={shouldReduceMotion}
+              side={1}
+            />
+          </motion.svg>
+
+          {/* Subtle top-left glass specular glaze so eyes read inside the curved surface */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-[2%] rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle at 32% 24%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.05) 26%, transparent 56%)",
+              boxShadow:
+                "inset 0 1px 2px rgba(255,255,255,0.16), inset 0 -2px 4px rgba(0,0,0,0.22)",
+            }}
+          />
+        </motion.div>
+      </motion.div>
     </div>
   );
 };

@@ -11,7 +11,7 @@ const SIMULATION_STEPS = [
 interface UsePipelineSimulationOptions {
   onResetSession: () => void
   onSetPromptText: (text: string) => void
-  onSubmitStep: (text: string) => Promise<void>
+  onSubmitStep: (text: string, options?: { isSimulation?: boolean }) => Promise<void>
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -55,7 +55,7 @@ export function usePipelineSimulation({
       onSetPromptText(stepText)
       await wait(900)
       if (simulationIdRef.current !== runId) return
-      await submitStepRef.current(stepText)
+      await submitStepRef.current(stepText, { isSimulation: true })
       await wait(1400)
     }
 

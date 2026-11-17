@@ -1,34 +1,20 @@
-export type DraftContentType =
-  | 'Practice Questions'
-  | 'Marathon Track'
-  | 'Category & Challenges'
+import type {
+  DraftContentType,
+  DraftDifficulty,
+  DraftFieldKey,
+  DraftQuestionStyle,
+  GeneratedQuestionItem,
+  GenerationDraft,
+} from '@/shared/types/ai'
 
-export type DraftDifficulty =
-  | 'Easy'
-  | 'Medium'
-  | 'Hard'
-  | 'Progressive (Easy → Hard)'
-
-export type DraftQuestionStyle = 'Implementation' | 'Conceptual' | 'Mixed'
-
-export interface GenerationDraft {
-  category: string | null
-  topic: string | null
-  contentType: DraftContentType | null
-  difficulty: DraftDifficulty | null
-  questionCount: number | null
-  questionStyle: DraftQuestionStyle | null
-  readyToGenerate: boolean
-  generated: boolean
+export type {
+  DraftContentType,
+  DraftDifficulty,
+  DraftFieldKey,
+  DraftQuestionStyle,
+  GeneratedQuestionItem,
+  GenerationDraft,
 }
-
-export type DraftFieldKey =
-  | 'category'
-  | 'topic'
-  | 'contentType'
-  | 'difficulty'
-  | 'questionCount'
-  | 'questionStyle'
 
 const TOPIC_CATALOG: Array<{
   keywords: string[]
@@ -329,15 +315,6 @@ export function buildClarificationResponse(
     reasoning: `${updatedText} All specification fields are confirmed. Asking user to confirm generation.`,
     message: `Everything is set for your **${draft.questionCount} ${draft.topic}** ${draft.contentType?.toLowerCase()} (**${draft.difficulty}**, **${draft.questionStyle}**).\n\nShould I create these questions now? Reply **Yes** or **No**.`,
   }
-}
-
-export interface GeneratedQuestionItem {
-  id: string
-  index: number
-  title: string
-  difficulty: 'Easy' | 'Medium' | 'Hard'
-  style: 'Conceptual' | 'Implementation'
-  description: string
 }
 
 const TOPIC_TITLES: Record<string, string[]> = {
