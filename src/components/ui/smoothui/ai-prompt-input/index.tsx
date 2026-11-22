@@ -2,10 +2,9 @@
 
 import SmoothButton from "../smooth-button";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Plus, Square, X } from "lucide-react";
 import {
   AnimatePresence,
-  type MotionStyle,
   motion,
   type Transition,
   useReducedMotion,
@@ -19,14 +18,10 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AIState,
-  getAIStateAccentColor,
-  getAIStateMotion,
-} from "../ai-core";
+import { type AIState, getAIStateMotion } from "../ai-core";
 
-const SUBMIT_ICON_SIZE = 17;
-const STOP_ICON_SIZE = 13;
+const SUBMIT_ICON_SIZE = 15;
+const STOP_ICON_SIZE = 11;
 
 const MIN_ROWS = 1;
 const MAX_ROWS = 8;
@@ -68,12 +63,12 @@ export type AIPromptInputProps = {
   maxLength?: number;
   onAttach?: () => void;
   onRemoveAttachment?: (id: string) => void;
-  /** Called when the submit control is pressed while `state` is `streaming`. */
+  /** Called when the submit control is pressed while `state` is `streaming` or `thinking`. */
   onStop?: () => void;
   onSubmit?: (value: string) => void;
   onValueChange?: (value: string) => void;
   placeholder?: string;
-  /** Shared AI state. `streaming` turns submit into stop. */
+  /** Shared AI state. `streaming`/`thinking` turns submit into stop. */
   state?: AIState;
   /** Controlled draft. Leave undefined to let the component own it. */
   value?: string;
@@ -117,7 +112,6 @@ const AIPromptInput = ({
 }: AIPromptInputProps) => {
   const shouldReduceMotion = useReducedMotion();
   const stateMotion = getAIStateMotion(state);
-  const accentColor = getAIStateAccentColor(state, "transparent");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [internalValue, setInternalValue] = useState("");
@@ -125,7 +119,7 @@ const AIPromptInput = ({
 
   const isControlled = value !== undefined;
   const draft = isControlled ? value : internalValue;
-  const isStreaming = state === "streaming";
+  const isStreaming = state === "streaming" || state === "thinking";
   const canSubmit = draft.trim().length > 0 && !disabled;
 
   const resize = useCallback(() => {
@@ -133,7 +127,6 @@ const AIPromptInput = ({
     if (!textarea) {
       return;
     }
-    // Collapse first, otherwise scrollHeight only ever grows.
     textarea.style.height = "auto";
     const lineHeight = Number.parseFloat(
       getComputedStyle(textarea).lineHeight || "20"
@@ -145,8 +138,6 @@ const AIPromptInput = ({
   }, []);
 
   useLayoutEffect(() => {
-    // Collapsing on an empty draft matters after submit: the box has to return
-    // to one row instead of holding the height of the message just sent.
     if (draft.length === 0 && textareaRef.current) {
       textareaRef.current.style.height = "";
     }
@@ -176,8 +167,6 @@ const AIPromptInput = ({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends, Shift+Enter breaks the line — the convention every chat UI
-    // has trained users on.
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -192,29 +181,19 @@ const AIPromptInput = ({
   return (
     <motion.div
       className={cn(
-        "relative w-full rounded-2xl border bg-background",
-        isFocused ? "border-foreground/40" : "border-border",
+        "relative w-full rounded-2xl border bg-[#212124] transition-colors",
+        isFocused ? "border-white/[0.14]" : "border-white/[0.08]",
         disabled && "opacity-60",
         className
       )}
       layout={shouldReduceMotion ? false : "position"}
-      style={
-        {
-          // The accent ring is the only place status shows here: a composer that
-          // changes shape per state would fight the text the user is writing.
-          boxShadow:
-            state === "error" || state === "done"
-              ? `0 0 0 1px ${accentColor}`
-              : undefined,
-        } as MotionStyle
-      }
       transition={shouldReduceMotion ? { duration: 0 } : SPRING_DEFAULT}
     >
       <AnimatePresence initial={false}>
         {attachments.length > 0 && (
           <motion.ul
             animate={{ height: "auto", opacity: 1 }}
-            className="flex list-none flex-wrap gap-2 overflow-hidden px-3 pt-3"
+            className="flex list-none flex-wrap gap-2 overflow-hidden px-3.5 pt-3"
             exit={
               shouldReduceMotion
                 ? { opacity: 0, transition: { duration: 0 } }
@@ -230,7 +209,7 @@ const AIPromptInput = ({
             {attachments.map((attachment, index) => (
               <motion.li
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 py-1 pr-1 pl-2 text-xs"
+                className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] py-1 pr-1 pl-2 text-xs text-[#E5E5E5]"
                 exit={
                   shouldReduceMotion
                     ? { opacity: 0, transition: { duration: 0 } }
@@ -251,14 +230,14 @@ const AIPromptInput = ({
               >
                 <span className="max-w-40 truncate">{attachment.name}</span>
                 {attachment.size !== undefined && (
-                  <span className="text-muted-foreground">
+                  <span className="text-[#8C8C8C]">
                     {formatSize(attachment.size)}
                   </span>
                 )}
                 {onRemoveAttachment ? (
                   <SmoothButton
                     aria-label={`Remove ${attachment.name}`}
-                    className="size-6 text-muted-foreground"
+                    className="size-6 text-[#8C8C8C] hover:text-white"
                     onClick={() => onRemoveAttachment(attachment.id)}
                     size="icon-sm"
                     type="button"
@@ -275,7 +254,7 @@ const AIPromptInput = ({
 
       <textarea
         aria-label={ariaLabel}
-        className="max-h-64 w-full resize-none bg-transparent px-4 pt-3 pb-2 text-base outline-none placeholder:text-muted-foreground md:text-sm"
+        className="max-h-64 w-full resize-none bg-transparent px-4 pt-3.5 pb-2.5 text-base text-white outline-none placeholder:text-[#737373] md:text-sm"
         disabled={disabled}
         onBlur={() => setIsFocused(false)}
         onChange={handleChange}
@@ -287,20 +266,18 @@ const AIPromptInput = ({
         value={draft}
       />
 
-      <div className="flex items-center justify-between gap-2 px-2 pb-2">
-        <div className="flex min-w-0 items-center gap-1">
+      <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
+        <div className="flex min-w-0 items-center gap-1.5">
           {onAttach ? (
-            <SmoothButton
-              aria-label="Attach a file"
-              className="text-muted-foreground"
+            <button
+              aria-label="Add attachment"
+              className="flex size-7 items-center justify-center rounded-lg text-[#8C8C8C] hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-40"
               disabled={disabled}
               onClick={onAttach}
-              size="icon-sm"
               type="button"
-              variant="ghost"
             >
-              <Paperclip aria-hidden="true" size={16} />
-            </SmoothButton>
+              <Plus aria-hidden="true" size={16} />
+            </button>
           ) : null}
           {children}
         </div>
@@ -312,7 +289,7 @@ const AIPromptInput = ({
                 animate={{ opacity: 1, y: 0 }}
                 className={cn(
                   "text-xs tabular-nums",
-                  overLimit ? "text-destructive" : "text-muted-foreground"
+                  overLimit ? "text-rose-400" : "text-[#737373]"
                 )}
                 exit={
                   shouldReduceMotion
@@ -364,10 +341,12 @@ const AIPromptSubmit = ({
   <motion.button
     aria-label={isStreaming ? "Stop generating" : "Send message"}
     className={cn(
-      "flex size-9 items-center justify-center rounded-xl",
-      disabled
-        ? "bg-muted text-muted-foreground"
-        : "bg-foreground text-background"
+      "flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer disabled:cursor-default",
+      isStreaming
+        ? "bg-white/[0.08] hover:bg-white/[0.14]"
+        : disabled
+          ? "bg-white/[0.06] text-[#525252]"
+          : "bg-white text-[#111111] hover:bg-[#E5E5E5]"
     )}
     disabled={disabled}
     onClick={onClick}
@@ -376,12 +355,6 @@ const AIPromptSubmit = ({
     whileHover={disabled || shouldReduceMotion ? undefined : { scale: 1.05 }}
     whileTap={disabled || shouldReduceMotion ? undefined : { scale: 0.95 }}
   >
-    {/* Real lucide glyphs, swapped rather than morphed.
-        An earlier version interpolated one hand-authored `d` into another, which
-        bought a nice fold at the cost of not being a lucide icon at all — and a
-        filled wedge reads as "play", not "send". A thin stroked arrow is the
-        convention, and lucide's own geometry is what the rest of the library
-        uses. The swap is scale-and-fade so it still reads as one control. */}
     <AnimatePresence initial={false} mode="popLayout">
       <motion.span
         animate={{ opacity: 1, scale: 1 }}
@@ -404,7 +377,7 @@ const AIPromptSubmit = ({
         {isStreaming ? (
           <Square
             aria-hidden="true"
-            className="fill-current"
+            className="fill-[#F45B5B] text-[#F45B5B]"
             size={STOP_ICON_SIZE}
             strokeWidth={0}
           />

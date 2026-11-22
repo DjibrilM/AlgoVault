@@ -9,12 +9,15 @@ import {
   Code2,
   Cpu,
   Calculator,
+  ListChecks,
+  Map as MapIcon,
 } from 'lucide-react'
 import { AICategory, Problem, Difficulty } from '@/shared/types/problem'
 import { getCategoryCoverUrl, getMarathonCoverUrl } from '@/shared/utils/coverImages'
 import { INITIAL_MARATHONS } from '@/shared/data/tracks/marathonData'
 import { challengeService } from '@/modules/challenge/services/challengeService'
 import { cn } from '@/lib/utils'
+import { MarathonQuestMap } from '../components/MarathonQuestMap'
 
 import mountainImg from '@/assets/images/marathons/mountain-flag.png'
 
@@ -36,6 +39,7 @@ export function CategoryProblemsScreen({
 
   const catName = category.name
   const isMarathon = 'isMarathon' in category && Boolean(category.isMarathon)
+  const [marathonTab, setMarathonTab] = useState<'questions' | 'map'>('questions')
   const matchedMarathon = isMarathon
     ? INITIAL_MARATHONS.find((m) => m.title.toLowerCase() === catName.toLowerCase())
     : undefined
@@ -141,8 +145,49 @@ export function CategoryProblemsScreen({
         </div>
       </div>
 
-      {/* 2. Controls: Search & Difficulty Filters */}
-      <div className="max-w-5xl mx-auto w-full px-8 pt-6 pb-2 space-y-4">
+      {/* 2. Controls: Marathon Questions/Map Tabs + Search & Difficulty Filters */}
+      <div className="max-w-5xl mx-auto w-full px-8 pt-6 pb-8 space-y-5">
+        {isMarathon && (
+          <div className="inline-flex items-center gap-1 rounded-xl border border-white/[0.06] bg-[#161618] p-1">
+            <button
+              type="button"
+              onClick={() => setMarathonTab('questions')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+                marathonTab === 'questions'
+                  ? 'bg-white text-[#111111] font-semibold'
+                  : 'text-[#8C8C8C] hover:text-white'
+              )}
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              <span>Questions</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMarathonTab('map')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+                marathonTab === 'map'
+                  ? 'bg-white text-[#111111] font-semibold'
+                  : 'text-[#8C8C8C] hover:text-white'
+              )}
+            >
+              <MapIcon className="h-3.5 w-3.5" />
+              <span>Map</span>
+            </button>
+          </div>
+        )}
+
+        {isMarathon && marathonTab === 'map' ? (
+          <div className="pt-1 pb-6">
+            <MarathonQuestMap
+              title={catName}
+              problems={problems}
+              onSelectProblem={onSelectProblem}
+            />
+          </div>
+        ) : (
+          <>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Search bar inside category */}
           <div className="relative flex-1 max-w-md">
@@ -217,14 +262,17 @@ export function CategoryProblemsScreen({
                         <span>Acceptance {problem.acceptance}</span>
                         <span>•</span>
                         <div className="flex items-center gap-1">
-                          {problem.tags.slice(0, 3).map((tag) => (
-                            <span
-                              key={tag}
-                              className="px-1.5 py-0.2 rounded bg-white/5 text-white/70 text-[10px]"
-                            >
-                              {tag}
-                            </span>
-                          ))}
+                          {problem.tags
+                            .filter((tag) => tag !== 'milestone-checkpoint')
+                            .slice(0, 3)
+                            .map((tag) => (
+                              <span
+                                key={tag}
+                                className="px-1.5 py-0.2 rounded bg-white/5 text-white/70 text-[10px]"
+                              >
+                                {tag.replace(/^milestone:/, '')}
+                              </span>
+                            ))}
                         </div>
                       </div>
                     </div>
@@ -257,6 +305,8 @@ export function CategoryProblemsScreen({
             })
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   )

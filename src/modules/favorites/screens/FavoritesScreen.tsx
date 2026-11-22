@@ -58,7 +58,7 @@ export function FavoritesScreen({ onReturnHome }: FavoritesScreenProps) {
             <span>Favorites</span>
           </h1>
           <p className="text-xs text-[#8C8C8C]">
-            Bookmarked challenges saved in your SQLite workspace for quick practice.
+            Bookmarked challenges saved for quick practice.
           </p>
         </div>
       </div>

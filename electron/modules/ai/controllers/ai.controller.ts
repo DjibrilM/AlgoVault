@@ -4,14 +4,19 @@
  * and broadcasting streaming agent events to renderer windows.
  */
 
-import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
+import { createRequire } from 'node:module'
+import type { BrowserWindow, IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import {
   AI_CHANNELS,
   type AiConnectionTestResultDto,
   type AiModelOptionDto,
   type AiProviderStatusDto,
   type AiStreamEvent,
+  type ChallengeChatRequestDto,
+  type ChallengeChatResultDto,
   type SaveAiConfigDto,
+  type SolutionFeedbackRequestDto,
+  type SolutionFeedbackResultDto,
   type StudioTurnRequestDto,
   type StudioTurnResultDto,
 } from '../../../../src/shared/types/ai.ts'
@@ -21,12 +26,10 @@ let electronIpcMain: IpcMain | null = null
 let electronBrowserWindow: typeof BrowserWindow | null = null
 try {
   if (typeof process !== 'undefined' && (process as NodeJS.Process & { type?: string }).type === 'browser') {
-    const req = (globalThis as { require?: NodeRequire }).require
-    if (req) {
-      const electron = req('electron') as typeof import('electron')
-      electronIpcMain = electron?.ipcMain ?? null
-      electronBrowserWindow = electron?.BrowserWindow ?? null
-    }
+    const req = createRequire(import.meta.url)
+    const electron = req('electron') as typeof import('electron')
+    electronIpcMain = electron?.ipcMain ?? null
+    electronBrowserWindow = electron?.BrowserWindow ?? null
   }
 } catch {
   // Running outside Electron main (unit tests)
@@ -40,10 +43,16 @@ export class AiController implements IAiController {
     this.aiService = aiService
   }
 
-  private broadcastEvent(event: AiStreamEvent): void {
+  private broadcastEvent(event: AiStreamEvent, sender?: WebContents): void {
+    let sentToSender = false
+    if (sender && !sender.isDestroyed?.()) {
+      sender.send(AI_CHANNELS.STREAM_EVENT, event)
+      sentToSender = true
+    }
+
     if (!electronBrowserWindow) return
     for (const win of electronBrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
+      if (!win.isDestroyed() && (!sentToSender || win.webContents !== sender)) {
         win.webContents.send(AI_CHANNELS.STREAM_EVENT, event)
       }
     }
@@ -89,8 +98,22 @@ export class AiController implements IAiController {
 
     targetIpc.handle(
       AI_CHANNELS.RUN_STUDIO_TURN,
-      async (_event: IpcMainInvokeEvent, dto: StudioTurnRequestDto) => {
-        return this.runStudioTurn(dto)
+      async (event: IpcMainInvokeEvent, dto: StudioTurnRequestDto) => {
+        return this.runStudioTurn(dto, event?.sender)
+      }
+    )
+
+    targetIpc.handle(
+      AI_CHANNELS.RUN_SOLUTION_FEEDBACK,
+      async (event: IpcMainInvokeEvent, dto: SolutionFeedbackRequestDto) => {
+        return this.runSolutionFeedback(dto, event?.sender)
+      }
+    )
+
+    targetIpc.handle(
+      AI_CHANNELS.RUN_CHALLENGE_CHAT,
+      async (event: IpcMainInvokeEvent, dto: ChallengeChatRequestDto) => {
+        return this.runChallengeChat(dto, event?.sender)
       }
     )
 
@@ -112,6 +135,8 @@ export class AiController implements IAiController {
       AI_CHANNELS.LIST_MODELS,
       AI_CHANNELS.TEST_CONNECTION,
       AI_CHANNELS.RUN_STUDIO_TURN,
+      AI_CHANNELS.RUN_SOLUTION_FEEDBACK,
+      AI_CHANNELS.RUN_CHALLENGE_CHAT,
       AI_CHANNELS.ABORT_RUN,
     ]) {
       try {
@@ -142,9 +167,27 @@ export class AiController implements IAiController {
     return this.aiService.testConnection(dto)
   }
 
-  runStudioTurn(dto: StudioTurnRequestDto): Promise<StudioTurnResultDto> {
+  runStudioTurn(dto: StudioTurnRequestDto, sender?: WebContents): Promise<StudioTurnResultDto> {
     return this.aiService.runStudioTurn(dto, (event) => {
-      this.broadcastEvent(event)
+      this.broadcastEvent(event, sender)
+    })
+  }
+
+  runSolutionFeedback(
+    dto: SolutionFeedbackRequestDto,
+    sender?: WebContents
+  ): Promise<SolutionFeedbackResultDto> {
+    return this.aiService.runSolutionFeedback(dto, (event) => {
+      this.broadcastEvent(event, sender)
+    })
+  }
+
+  runChallengeChat(
+    dto: ChallengeChatRequestDto,
+    sender?: WebContents
+  ): Promise<ChallengeChatResultDto> {
+    return this.aiService.runChallengeChat(dto, (event) => {
+      this.broadcastEvent(event, sender)
     })
   }
 

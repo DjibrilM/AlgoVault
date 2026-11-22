@@ -59,7 +59,7 @@ export function HistoryScreen({ onReturnHome }: HistoryScreenProps) {
             <span>Submissions History</span>
           </h1>
           <p className="text-xs text-[#8C8C8C]">
-            Persisted submissions and compute resource metrics recorded in SQLite. Click any submission to inspect its code.
+            Your past submissions and runtime metrics. Click any submission to inspect its code.
           </p>
         </div>
       </div>

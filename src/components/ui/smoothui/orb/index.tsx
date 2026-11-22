@@ -252,7 +252,8 @@ vec3 linearToSrgb(vec3 c) {
 }
 
 void main() {
-  vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / min(uRes.x, uRes.y);
+  vec2 safeRes = max(uRes, vec2(1.0));
+  vec2 uv = (gl_FragCoord.xy * 2.0 - safeRes) / min(safeRes.x, safeRes.y);
   uv /= RAD;
 
   /* Silhouette wobble. Integer harmonics of the angle keep it continuous all
@@ -269,6 +270,22 @@ void main() {
   }
 
   float r = length(uv);
+
+  // Keep a crisp ~1 device-px feather so the orb silhouette stays razor-sharp at every size.
+  float w = max(uSoft, 1.0 * fwidth(r));
+  float body = 1.0 - smoothstep(1.0 - w, 1.0, r);
+
+  /* The halo has to reach exactly zero before the canvas boundary. Left alone
+     it is still ~1.5/255 at the edge and gets cut off square, which shows the
+     canvas box as a faint rectangle around the orb. */
+  float glowF = uGlow > 0.0001 ? uGlow * exp(-max(r - 1.0, 0.0) * 20.0) : 0.0;
+  glowF *= 1.0 - smoothstep(0.45, 1.0, (r - 1.0) / (RMAX - 1.0));
+  float alpha = clamp(body + glowF * (1.0 - body), 0.0, 1.0);
+  if (!(alpha > 0.001)) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
   vec2 pd = uv / max(r, 1.0);
   float z = sqrt(max(1.0 - dot(pd, pd), 0.0));
   vec3 n = vec3(pd, z);
@@ -281,7 +298,7 @@ void main() {
   vec2 p2 = p1 + uTurb * flowField(p1 * 1.7 + 5.2);
   float t = mix(0.5, fbm(p2 + 3.7), 1.35) + uShift;
 
-  float fres3 = pow(1.0 - n.z, 3.0);
+  float fres3 = pow(max(1.0 - n.z, 1e-4), 3.0);
   vec3 lab = iridesce(paletteLab(t), fres3);
 
   vec3 base;
@@ -306,22 +323,11 @@ void main() {
   col += uInner * exp(-dot(op, op) * 2.2) * base;
 
   vec3 half_ = normalize(L + vec3(0.0, 0.0, 1.0));
-  col += pow(1.0 - n.z, 8.0) * uRim
-       + pow(max(dot(n, half_), 0.0), 24.3) * uSpec;
+  col += pow(max(1.0 - n.z, 1e-4), 8.0) * uRim
+       + pow(max(dot(n, half_), 1e-4), 24.3) * uSpec;
 
   vec3 lit = linearToSrgb(col);
   vec3 flat_ = linearToSrgb(base);
-
-  // Keep a crisp ~1 device-px feather so the orb silhouette stays razor-sharp at every size.
-  float w = max(uSoft, 1.0 * fwidth(r));
-  float body = 1.0 - smoothstep(1.0 - w, 1.0, r);
-
-  /* The halo has to reach exactly zero before the canvas boundary. Left alone
-     it is still ~1.5/255 at the edge and gets cut off square, which shows the
-     canvas box as a faint rectangle around the orb. */
-  float glowF = uGlow * exp(-max(r - 1.0, 0.0) * 20.0);
-  glowF *= 1.0 - smoothstep(0.45, 1.0, (r - 1.0) / (RMAX - 1.0));
-  float alpha = clamp(body + glowF * (1.0 - body), 0.0, 1.0);
 
   vec3 outCol = mix(flat_, lit, body);
 
@@ -352,10 +358,34 @@ const readScalar = (value: number | MotionValue<number>): number =>
  * whatever syntax survives into actual pixels, which is the only step that
  * cannot lie about the result.
  */
+const OKLCH_RE =
+  /^oklch\(\s*([\d.]+%?)\s+([\d.]+%?)\s+([-+]?[\d.]+)(deg|rad|grad|turn)?\s*(?:\/[^)]*)?\)$/i;
+
 const cssToOklab = (input: string): [number, number, number] => {
   const cached = OKLAB_CACHE.get(input);
   if (cached) {
     return cached;
+  }
+
+  const oklchMatch = OKLCH_RE.exec(input.trim());
+  if (oklchMatch) {
+    const rawL = oklchMatch[1];
+    const rawC = oklchMatch[2];
+    const rawH = Number.parseFloat(oklchMatch[3]);
+    const unit = (oklchMatch[4] ?? "deg").toLowerCase();
+    const l = rawL.endsWith("%") ? Number.parseFloat(rawL) / 100 : Number.parseFloat(rawL);
+    const c = rawC.endsWith("%") ? Number.parseFloat(rawC) * 0.004 : Number.parseFloat(rawC);
+    const hueRad =
+      unit === "rad"
+        ? rawH
+        : unit === "turn"
+          ? rawH * TAU
+          : unit === "grad"
+            ? rawH * (Math.PI / 200)
+            : rawH * (Math.PI / 180);
+    const direct: [number, number, number] = [l, c * Math.cos(hueRad), c * Math.sin(hueRad)];
+    OKLAB_CACHE.set(input, direct);
+    return direct;
   }
 
   const probe = document.createElement("span");
@@ -587,14 +617,14 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
       }
       w = Math.max(1, w);
       h = Math.max(1, h);
-      if (canvas.width === w && canvas.height === h) {
-        return false;
+      const changed = canvas.width !== w || canvas.height !== h;
+      if (changed) {
+        canvas.width = w;
+        canvas.height = h;
       }
-      canvas.width = w;
-      canvas.height = h;
       gl.viewport(0, 0, w, h);
       gl.uniform2f(u.res, w, h);
-      return true;
+      return changed;
     };
 
     const draw = () => {
@@ -771,9 +801,9 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
   return (
     <canvas
       aria-hidden="true"
-      className={cn("block", className)}
+      className={cn("block rounded-full", className)}
       ref={canvasRef}
-      style={{ height: dimension, width: dimension }}
+      style={{ background: "transparent", height: dimension, width: dimension }}
       tabIndex={-1}
     />
   );

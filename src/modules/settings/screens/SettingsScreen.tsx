@@ -1,467 +1,474 @@
-import { useEffect, useMemo, useState } from 'react'
+import { FormEvent, useState, type FC } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
-  ArrowLeft,
+  Activity,
+  Check,
   CheckCircle2,
-  Cpu,
+  Copy,
+  ExternalLink,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
-  PlugZap,
-  Search,
-  Server,
+  MoreVertical,
+  Pencil,
+  Plus,
   Trash2,
+  X,
   XCircle,
 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 import {
-  AI_PROVIDER_DEFAULTS,
-  AI_PROVIDER_ORDER,
-  getModelProviderKey,
-  groupModelsByProvider,
-} from '@/shared/types/ai'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 import { SettingsScreenProps } from '../types'
-import { useSettings } from '../hooks'
+import { type StoredApiKeyEntry, useSettings } from '../hooks'
 
-export function SettingsScreen({ onReturnHome }: SettingsScreenProps) {
+const GOOGLE_AI_STUDIO_KEYS_URL = 'https://aistudio.google.com/api-keys'
+
+function formatCreatedDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'Recently'
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+export const SettingsScreen: FC<SettingsScreenProps> = () => {
   const {
-    status,
-    availableModels,
-    isModelsLoading,
     isLoading,
-    provider,
-    modelId,
-    setModelId,
-    selectModel,
-    baseUrl,
-    setBaseUrl,
+    entries,
+    isAddModalOpen,
+    setIsAddModalOpen,
+    openAddModal,
+    closeAddModal,
+    keyNameInput,
+    setKeyNameInput,
     apiKeyInput,
     setApiKeyInput,
-    clearStoredKey,
-    setClearStoredKey,
-    selectProvider,
-    handleSave,
-    handleTest,
+    formError,
     isSaving,
-    isTesting,
-    testResult,
-    saveFeedback,
-    returnHome,
+    copiedKeyId,
+    testingKeyId,
+    testResultByKey,
+    toast,
+    dismissToast,
+    renamingEntry,
+    renameInput,
+    setRenameInput,
+    openRenameModal,
+    closeRenameModal,
+    submitRenameKey,
+    addApiKey,
+    activateApiKey,
+    copyApiKey,
+    testApiKey,
+    deleteApiKey,
   } = useSettings()
 
   const [showKey, setShowKey] = useState(false)
-  const [modelGroupFilter, setModelGroupFilter] = useState<string | null>(null)
-  const [modelQuery, setModelQuery] = useState('')
-  const defaults = AI_PROVIDER_DEFAULTS[provider]
-  const hasSavedKeyForProvider = Boolean(
-    status?.hasApiKey && status.provider === provider && !clearStoredKey
-  )
 
-  useEffect(() => {
-    setModelGroupFilter(null)
-    setModelQuery('')
-  }, [provider])
+  const handleAddSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    void addApiKey()
+  }
 
-  const groupedModels = useMemo(
-    () => groupModelsByProvider(availableModels),
-    [availableModels]
-  )
+  const handleRenameSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    submitRenameKey()
+  }
 
-  const currentModelProviderKey = useMemo(
-    () => getModelProviderKey({ id: modelId, provider }),
-    [modelId, provider]
-  )
+  const renderRow = (entry: StoredApiKeyEntry) => {
+    const isTesting = testingKeyId === entry.id
+    const isCopied = copiedKeyId === entry.id
+    const testResult = testResultByKey[entry.id]
 
-  const activeGroupKey = useMemo(() => {
-    if (modelQuery.trim()) return 'all'
-    if (
-      modelGroupFilter &&
-      (modelGroupFilter === 'all' ||
-        groupedModels.some((group) => group.provider === modelGroupFilter))
-    ) {
-      return modelGroupFilter
-    }
-    if (
-      groupedModels.length > 1 &&
-      groupedModels.some((group) => group.provider === currentModelProviderKey)
-    ) {
-      return currentModelProviderKey
-    }
-    return groupedModels.length > 1 ? (groupedModels[0]?.provider ?? 'all') : 'all'
-  }, [currentModelProviderKey, groupedModels, modelGroupFilter, modelQuery])
-
-  const visibleModels = useMemo(() => {
-    const q = modelQuery.trim().toLowerCase()
-    const base =
-      activeGroupKey === 'all'
-        ? availableModels
-        : groupedModels.find((group) => group.provider === activeGroupKey)?.models ??
-          availableModels
-    if (!q) return base
-    return base.filter(
-      (model) =>
-        model.id.toLowerCase().includes(q) ||
-        model.name.toLowerCase().includes(q) ||
-        model.provider.toLowerCase().includes(q)
-    )
-  }, [activeGroupKey, availableModels, groupedModels, modelQuery])
-
-  return (
-    <div className="h-full flex flex-col bg-[#1A1A1A] text-[#E5E5E5] overflow-y-auto select-none">
-      {/* Header */}
-      <header className="h-12 px-6 border-b border-white/[0.06] bg-[#171717] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onReturnHome ?? returnHome}
-            className="inline-flex items-center gap-1.5 text-xs text-[#A3A3A3] hover:text-white transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 text-white" />
-            <span>Back to Home</span>
-          </button>
-          <span className="h-4 w-px bg-white/10" />
-          <span className="text-xs font-semibold text-white">Settings</span>
+    return (
+      <div
+        key={entry.id}
+        className="grid grid-cols-[minmax(200px,1.8fr)_170px_130px_130px_110px] gap-4 items-center px-1 py-4 border-b border-white/[0.06] hover:bg-white/[0.02] transition-colors"
+      >
+        {/* Key */}
+        <div className="min-w-0 space-y-0.5">
+          <div className="font-mono text-xs font-medium text-white">
+            {entry.maskedSuffix}
+          </div>
+          <div className="text-xs text-[#8C8C8C] truncate">{entry.name}</div>
         </div>
 
-        <span
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium',
-            status?.configured
-              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
-              : 'border-white/[0.08] bg-white/[0.04] text-[#8C8C8C]'
-          )}
-        >
-          <span
-            className={cn(
-              'size-1.5 rounded-full',
-              status?.configured ? 'bg-emerald-400' : 'bg-[#737373]'
-            )}
-          />
-          {isLoading
-            ? 'Checking AI status...'
-            : status?.configured
-              ? `${AI_PROVIDER_DEFAULTS[status.provider].label} (${status.source})`
-              : 'AI Provider Not Configured'}
-        </span>
-      </header>
-
-      {/* Main Content */}
-      <div className="max-w-3xl w-full mx-auto px-8 py-8 space-y-8">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-white">
-            <Cpu className="size-4 text-[#8C8C8C]" />
-            <h1 className="text-lg font-semibold tracking-tight">AI Agents & Provider</h1>
+        {/* Source & Connection */}
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-xs text-[#D4D4D4] truncate">
+            {entry.apiKey ? 'Saved key' : 'Active key'}
           </div>
-          <p className="text-xs text-[#8C8C8C] leading-relaxed">
-            Configure the model backend powering Questions Factory&apos;s Master Agent, Catalog Analyst, and Challenge Architect. Credentials stay stored locally on your machine or come from environment variables.
-          </p>
-        </div>
-
-        {/* Provider Cards */}
-        <section className="space-y-3">
-          <label className="text-xs font-medium text-[#A3A3A3]">Model Provider</label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {AI_PROVIDER_ORDER.map((id) => {
-              const info = AI_PROVIDER_DEFAULTS[id]
-              const selected = provider === id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => selectProvider(id)}
-                  className={cn(
-                    'text-left rounded-xl border p-3.5 transition-all cursor-pointer space-y-1',
-                    selected
-                      ? 'border-[#A855F7]/60 bg-[#A855F7]/10 text-white'
-                      : 'border-white/[0.07] bg-[#161616] hover:border-white/15 hover:bg-[#1E1E1E] text-[#D4D4D4]'
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold">{info.label}</span>
-                    {id === 'openai-compatible' && (
-                      <Server className="size-3.5 text-[#8C8C8C] shrink-0" />
-                    )}
-                  </div>
-                  <p className="text-[11px] text-[#8C8C8C] leading-snug">
-                    {info.description}
-                  </p>
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* Connection Form */}
-        <section className="rounded-xl border border-white/[0.07] bg-[#161616] p-5 space-y-5">
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-[#D4D4D4]" htmlFor="ai-model-id">
-              Model ID
-            </label>
-            <Input
-              id="ai-model-id"
-              value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-              placeholder={defaults.modelId}
-              className="h-9 bg-[#111111] border-white/10 text-xs text-white placeholder:text-[#525252] font-mono"
-            />
-            {isModelsLoading ? (
-              <div
-                role="status"
-                aria-busy="true"
-                aria-label="Loading models"
-                className="space-y-2.5 pt-1"
-              >
-                <span className="sr-only">Loading models...</span>
-                <div className="flex flex-wrap gap-1.5">
-                  <div className="h-6 w-20 rounded-md shimmer-surface" />
-                  <div className="h-6 w-16 rounded-md shimmer-surface" />
-                  <div className="h-6 w-16 rounded-md shimmer-surface" />
-                  <div className="h-6 w-20 rounded-md shimmer-surface" />
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <div className="h-7 w-28 rounded-md shimmer-surface" />
-                  <div className="h-7 w-32 rounded-md shimmer-surface" />
-                  <div className="h-7 w-24 rounded-md shimmer-surface" />
-                  <div className="h-7 w-36 rounded-md shimmer-surface" />
-                  <div className="h-7 w-28 rounded-md shimmer-surface" />
-                </div>
-              </div>
-            ) : availableModels.length > 0 && (
-              <div className="space-y-2.5 pt-1">
-                {(groupedModels.length > 1 || availableModels.length > 12) && (
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    {groupedModels.length > 1 && (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {groupedModels.map((group) => {
-                          const selectedGroup = activeGroupKey === group.provider
-                          return (
-                            <button
-                              key={group.provider}
-                              type="button"
-                              onClick={() => {
-                                setModelQuery('')
-                                setModelGroupFilter(group.provider)
-                              }}
-                              className={cn(
-                                'rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer',
-                                selectedGroup
-                                  ? 'border-white/25 bg-white/[0.1] text-white'
-                                  : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] text-[#8C8C8C] hover:text-[#D4D4D4]'
-                              )}
-                            >
-                              {group.label}
-                              <span className="ml-1 text-[10px] text-[#737373]">
-                                {group.models.length}
-                              </span>
-                            </button>
-                          )
-                        })}
-                        <button
-                          type="button"
-                          onClick={() => setModelGroupFilter('all')}
-                          className={cn(
-                            'rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer',
-                            activeGroupKey === 'all' && !modelQuery.trim()
-                              ? 'border-white/25 bg-white/[0.1] text-white'
-                              : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] text-[#8C8C8C] hover:text-[#D4D4D4]'
-                          )}
-                        >
-                          All
-                        </button>
-                      </div>
-                    )}
-
-                    {availableModels.length > 12 && (
-                      <div className="relative flex items-center ml-auto">
-                        <Search className="pointer-events-none absolute left-2 size-3 text-[#6E6E6E]" />
-                        <input
-                          type="text"
-                          value={modelQuery}
-                          onChange={(e) => setModelQuery(e.target.value)}
-                          placeholder="Filter models..."
-                          className="h-7 w-44 rounded-md border border-white/[0.08] bg-[#111111] pl-7 pr-2 text-[11px] text-[#E5E5E5] placeholder:text-[#525252] outline-none focus:border-white/20"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="max-h-44 overflow-y-auto flex flex-wrap gap-1.5 pr-1">
-                  {visibleModels.length === 0 ? (
-                    <span className="text-[11px] text-[#737373]">No matching models</span>
-                  ) : (
-                    visibleModels.map((model) => {
-                      const active = modelId === model.id
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          onClick={() => selectModel(model.id)}
-                          title={model.description || model.id}
-                          className={cn(
-                            'rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer',
-                            active
-                              ? 'border-white/30 bg-white/[0.12] text-white'
-                              : 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] text-[#A3A3A3] hover:text-white'
-                          )}
-                        >
-                          {model.name}
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-[#D4D4D4]" htmlFor="ai-base-url">
-                {provider === 'openai-compatible' ? 'Server Base URL' : 'Custom Base URL (Optional)'}
-              </label>
-              {provider === 'openai-compatible' && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setBaseUrl('http://127.0.0.1:1234/v1')}
-                    className="rounded-md border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] px-2 py-0.5 text-[10px] text-[#D4D4D4] cursor-pointer"
-                  >
-                    LM Studio (:1234)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBaseUrl('http://127.0.0.1:11434/v1')}
-                    className="rounded-md border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] px-2 py-0.5 text-[10px] text-[#D4D4D4] cursor-pointer"
-                  >
-                    Ollama (:11434)
-                  </button>
-                </div>
-              )}
-            </div>
-            <Input
-              id="ai-base-url"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={defaults.baseUrl || 'Leave blank for default provider endpoint'}
-              className="h-9 bg-[#111111] border-white/10 text-xs text-white placeholder:text-[#525252] font-mono"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-[#D4D4D4] flex items-center gap-1.5" htmlFor="ai-api-key">
-                <KeyRound className="size-3.5 text-[#8C8C8C]" />
-                <span>API Key</span>
-              </label>
-              {hasSavedKeyForProvider && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-[#8C8C8C]">
-                    Saved: {status?.maskedApiKey}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setClearStoredKey(true)
-                      setApiKeyInput('')
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] text-rose-400 hover:text-rose-300 cursor-pointer"
-                  >
-                    <Trash2 className="size-3" />
-                    <span>Clear</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="relative">
-              <Input
-                id="ai-api-key"
-                type={showKey ? 'text' : 'password'}
-                value={apiKeyInput}
-                onChange={(e) => {
-                  setApiKeyInput(e.target.value)
-                  if (e.target.value) setClearStoredKey(false)
-                }}
-                placeholder={
-                  hasSavedKeyForProvider
-                    ? 'Enter a new key to replace the saved key'
-                    : defaults.placeholderKey
-                }
-                className="h-9 pr-9 bg-[#111111] border-white/10 text-xs text-white placeholder:text-[#525252] font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey((prev) => !prev)}
-                aria-label={showKey ? 'Hide API key' : 'Show API key'}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#737373] hover:text-white cursor-pointer"
-              >
-                {showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Feedback */}
-          {testResult && (
+          {testResult ? (
             <div
               className={cn(
-                'rounded-lg border px-3 py-2.5 text-xs flex items-start gap-2 select-text',
-                testResult.ok
-                  ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
-                  : 'border-rose-500/25 bg-rose-500/10 text-rose-200'
+                'inline-flex items-center gap-1.5 text-[11px] truncate',
+                testResult.ok ? 'text-emerald-400' : 'text-rose-400'
               )}
+              title={testResult.error}
             >
-              {testResult.ok ? (
-                <CheckCircle2 className="size-4 shrink-0 mt-0.5 text-emerald-400" />
-              ) : (
-                <XCircle className="size-4 shrink-0 mt-0.5 text-rose-400" />
-              )}
-              <div className="space-y-0.5 min-w-0">
-                <div className="font-medium">
-                  {testResult.ok
-                    ? `Connected to ${testResult.modelId} (${testResult.latencyMs} ms)`
-                    : 'Connection failed'}
-                </div>
-                {testResult.error && (
-                  <p className="text-[11px] opacity-90 break-words">{testResult.error}</p>
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full shrink-0',
+                  testResult.ok ? 'bg-emerald-400' : 'bg-rose-400'
+                )}
+              />
+              <span className="truncate">
+                {testResult.ok ? `Connected · ${testResult.latencyMs}ms` : 'Check failed'}
+              </span>
+            </div>
+          ) : (
+            <div className="text-[11px] text-[#666666] truncate">Google Gemini API</div>
+          )}
+        </div>
+
+        {/* Added */}
+        <div className="text-xs text-[#9A9A9A] tabular-nums">
+          {formatCreatedDate(entry.createdAt)}
+        </div>
+
+        {/* Status */}
+        <div>
+          {entry.isActive ? (
+            <span
+              className="inline-flex items-center justify-center"
+              title="Active API key"
+              aria-label="Active API key"
+            >
+              <Check className="h-4 w-4 text-emerald-400" />
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void activateApiKey(entry)}
+              disabled={isSaving || !entry.apiKey}
+              className="inline-flex items-center rounded-lg bg-white/[0.03] hover:bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-[#9A9A9A] hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default"
+            >
+              Set active
+            </button>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-1 text-[#8C8C8C]">
+          <button
+            type="button"
+            onClick={() => copyApiKey(entry)}
+            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
+            title={isCopied ? 'Copied' : 'Copy API key'}
+            aria-label="Copy API key"
+          >
+            {isCopied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void testApiKey(entry)}
+            disabled={isTesting}
+            className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+            title="Verify API key connection"
+            aria-label="Verify API key connection"
+          >
+            {isTesting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
+            ) : (
+              <Activity className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer outline-none"
+              title="Key options"
+              aria-label="Key options"
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent
+              align="end"
+              sideOffset={6}
+              className="min-w-[155px] rounded-xl border border-white/[0.08] bg-[#1E1E22] p-1.5 text-[#E5E5E5] shadow-[0_16px_44px_rgba(0,0,0,0.75)]"
+            >
+              <DropdownMenuItem
+                onClick={() => openRenameModal(entry)}
+                className="rounded-lg px-2.5 py-2 flex items-center gap-2.5 text-xs text-[#D4D4D4] hover:text-white hover:bg-white/[0.06] data-[highlighted]:bg-white/[0.06]"
+              >
+                <Pencil className="h-3.5 w-3.5 text-[#8C8C8C]" />
+                <span>Rename key</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => void deleteApiKey(entry)}
+                className="rounded-lg px-2.5 py-2 flex items-center gap-2.5 text-xs text-[#D4D4D4] hover:text-rose-400 hover:bg-white/[0.06] data-[highlighted]:bg-white/[0.06]"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-[#8C8C8C]" />
+                <span>Delete key</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-[#1A1A1A] text-[#E5E5E5] overflow-y-auto select-none px-8 py-8 scrollbar-thin">
+      <div className="max-w-5xl mx-auto w-full space-y-7">
+        {/* Top Bar */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="space-y-1">
+            <h1 className="text-xl font-bold tracking-tight text-white">API Keys</h1>
+            <p className="text-xs text-[#8C8C8C] max-w-2xl leading-relaxed">
+              AlgoVault uses Google Gemini to generate challenges, review your code, and power the Guide chat. Create an API key in{' '}
+              <a
+                href={GOOGLE_AI_STUDIO_KEYS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-[#D4D4D4] hover:text-white underline underline-offset-4 transition-colors"
+              >
+                <span>Google AI Studio</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              .
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-semibold text-[#111111] transition-colors hover:bg-[#E5E5E5] cursor-pointer shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add API key</span>
+          </button>
+        </div>
+
+        {/* Clean Unboxed Keys Table */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[740px]">
+            <div className="grid grid-cols-[minmax(200px,1.8fr)_170px_130px_130px_110px] gap-4 px-1 pb-3 border-b border-white/[0.08] text-[11px] font-medium uppercase tracking-wider text-[#737373]">
+              <div>Key</div>
+              <div>Provider</div>
+              <div>Added</div>
+              <div>Status</div>
+              <div className="text-right">Actions</div>
+            </div>
+
+            {isLoading ? (
+              <div className="space-y-2.5 py-4">
+                {[0, 1].map((idx) => (
+                  <div key={idx} className="h-14 rounded-lg shimmer-surface" />
+                ))}
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="py-16 text-center space-y-1.5 border-b border-white/[0.06]">
+                <p className="text-sm font-medium text-white">No API keys added yet</p>
+                <p className="text-xs text-[#737373] max-w-md mx-auto leading-relaxed">
+                  Add a Gemini API key to enable challenge generation, feedback, and guide chat.
+                </p>
+              </div>
+            ) : (
+              <div>{entries.map(renderRow)}</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Add API Key Dialog */}
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent className="w-[min(92vw,580px)] sm:max-w-[580px] bg-[#1C1C1E] border-0 ring-0 text-[#E5E5E5] p-0 overflow-hidden shadow-[0_28px_90px_rgba(0,0,0,0.85)]">
+          <DialogHeader className="px-7 pt-6 pb-1">
+            <DialogTitle className="text-base font-semibold text-white">
+              Add API key
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#8C8C8C]">
+              Paste a Google Gemini API key and set it as active for AlgoVault.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddSubmit} className="px-7 pb-6 pt-4 space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="key-name-input"
+                className="text-[11px] font-medium uppercase tracking-wider text-[#737373] block"
+              >
+                Key Label
+              </label>
+              <div className="rounded-xl bg-[#131315] px-4 py-3">
+                <input
+                  id="key-name-input"
+                  type="text"
+                  value={keyNameInput}
+                  onChange={(e) => setKeyNameInput(e.target.value)}
+                  placeholder="Personal Key"
+                  className="w-full bg-transparent border-0 text-xs font-medium text-white placeholder:text-[#525252] outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="key-value-input"
+                className="text-[11px] font-medium uppercase tracking-wider text-[#737373] block"
+              >
+                Gemini API Key
+              </label>
+              <div className="rounded-xl bg-[#131315] px-4 py-3 flex items-center gap-3">
+                <input
+                  id="key-value-input"
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="Paste your Gemini API key..."
+                  className="w-full bg-transparent border-0 text-xs text-white font-mono placeholder:text-[#525252] outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((prev) => !prev)}
+                  aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                  className="text-[#737373] hover:text-white cursor-pointer shrink-0 transition-colors"
+                >
+                  {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {formError && <p className="text-xs text-rose-400">{formError}</p>}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={closeAddModal}
+                className="h-9 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] px-4 text-xs font-medium text-[#D4D4D4] hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="h-9 rounded-lg bg-white hover:bg-[#E5E5E5] px-5 text-xs font-semibold text-[#111111] transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>{isSaving ? 'Adding...' : 'Add key'}</span>
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename API Key Dialog */}
+      <Dialog open={Boolean(renamingEntry)} onOpenChange={(open) => !open && closeRenameModal()}>
+        <DialogContent className="w-[min(92vw,460px)] sm:max-w-[460px] bg-[#1C1C1E] border-0 ring-0 text-[#E5E5E5] p-0 overflow-hidden shadow-[0_28px_90px_rgba(0,0,0,0.85)]">
+          <DialogHeader className="px-7 pt-6 pb-1">
+            <DialogTitle className="text-base font-semibold text-white">
+              Rename key
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#8C8C8C]">
+              Update the display label for {renamingEntry?.maskedSuffix}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleRenameSubmit} className="px-7 pb-6 pt-4 space-y-5">
+            <div className="space-y-2">
+              <label
+                htmlFor="rename-key-input"
+                className="text-[11px] font-medium uppercase tracking-wider text-[#737373] block"
+              >
+                Key Label
+              </label>
+              <div className="rounded-xl bg-[#131315] px-4 py-3">
+                <input
+                  id="rename-key-input"
+                  type="text"
+                  value={renameInput}
+                  onChange={(e) => setRenameInput(e.target.value)}
+                  placeholder="Personal Key"
+                  className="w-full bg-transparent border-0 text-xs font-medium text-white placeholder:text-[#525252] outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={closeRenameModal}
+                className="h-9 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] px-4 text-xs font-medium text-[#D4D4D4] hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!renameInput.trim()}
+                className="h-9 rounded-lg bg-white hover:bg-[#E5E5E5] px-5 text-xs font-semibold text-[#111111] transition-colors cursor-pointer disabled:opacity-45"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Verification Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 14, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.97 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-6 right-6 z-50 rounded-xl bg-[#202024] px-4 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.8)] min-w-[300px] max-w-[380px] flex items-start justify-between gap-3"
+          >
+            <div className="flex items-start gap-2.5 min-w-0">
+              <span className="mt-0.5 shrink-0">
+                {toast.state === 'loading' ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                ) : toast.state === 'success' ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-rose-400" />
+                )}
+              </span>
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-xs font-semibold text-white truncate">{toast.title}</p>
+                {toast.detail && (
+                  <p className="text-[11px] text-[#9A9A9A] leading-snug break-words">
+                    {toast.detail}
+                  </p>
                 )}
               </div>
             </div>
-          )}
-
-          {saveFeedback && (
-            <p className="text-xs text-emerald-400">{saveFeedback}</p>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2.5 pt-1">
-            <button
-              type="button"
-              onClick={() => void handleTest()}
-              disabled={isTesting || isSaving}
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] px-3.5 py-1.5 text-xs font-medium text-[#E5E5E5] transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {isTesting ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <PlugZap className="size-3.5 text-[#A855F7]" />
-              )}
-              <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
-            </button>
 
             <button
               type="button"
-              onClick={() => void handleSave()}
-              disabled={isSaving || isTesting}
-              className="inline-flex items-center gap-1.5 rounded-md bg-white hover:bg-[#E5E5E5] px-4 py-1.5 text-xs font-semibold text-[#111111] transition-colors cursor-pointer disabled:opacity-50"
+              onClick={dismissToast}
+              aria-label="Dismiss notification"
+              className="p-1 rounded-md text-[#737373] hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer shrink-0"
             >
-              {isSaving && <Loader2 className="size-3.5 animate-spin" />}
-              <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
+              <X className="h-3.5 w-3.5" />
             </button>
-          </div>
-        </section>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

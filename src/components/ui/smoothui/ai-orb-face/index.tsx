@@ -183,10 +183,10 @@ const STATE_SHADER: Record<AIState, StateShaderPreset> = {
     wobble: 0.22,
   },
   error: {
-    colors: ["oklch(58% 0.19 22)", "oklch(88% 0.05 20)"],
+    colors: ["#df5555", "#f4d3d0"],
     flow: 0.24,
     rim: 0.85,
-    saturation: 0.82,
+    saturation: 1,
     specular: 0.12,
     speed: 0.32,
     turbulence: 0.18,
@@ -944,18 +944,16 @@ const AIOrbFace = ({
     liveRotate.set(liveRotate.get() + (trot - liveRotate.get()) * alpha);
   });
 
-  // Orb draws its sphere at 86% of its own box, so the box is scaled up by
-  // that much to land the sphere exactly on the r=48 circle the face was drawn around.
-  const bodySpan = (96 / VIEWBOX / ORB_SPHERE_FRACTION) * 100;
-  const bodyInset = (100 - bodySpan) / 2;
+  // Orb draws its sphere at 86% of its own box, so we clip at the exact r=48
+  // sphere boundary (inset-[2%]) and scale the inner canvas by 1 / 0.86.
+  const orbCanvasSpan = (1 / ORB_SPHERE_FRACTION) * 100;
+  const orbCanvasOffset = (100 - orbCanvasSpan) / 2;
 
   return (
     <div
       className={cn("relative block", className)}
       style={{
-        filter: `saturate(${stateShader.saturation})`,
         height: resolvedSize,
-        transition: "filter 320ms ease",
         width: resolvedSize,
       }}
     >
@@ -974,41 +972,42 @@ const AIOrbFace = ({
             y: liveY,
           }}
         >
-          <div
-            className="absolute"
-            style={{
-              height: `${bodySpan}%`,
-              left: `${bodyInset}%`,
-              top: `${bodyInset}%`,
-              width: `${bodySpan}%`,
-            }}
-          >
+          <div className="absolute inset-[2%] rounded-full overflow-hidden">
             {/* Painted understudy so the body survives WebGL context reclamation */}
             <div
               aria-hidden
-              className="absolute rounded-full"
+              className="absolute inset-0 rounded-full"
               style={{
                 background: `radial-gradient(circle at 34% 30%, ${bodyEdgeColor}, ${bodyColor} 72%)`,
-                inset: `${(1 - ORB_SPHERE_FRACTION) * 50}%`,
               }}
             />
-            <Orb
-              amplitude={amplitudeValue}
-              className="size-full"
-              colors={[bodyColor, bodyEdgeColor]}
-              flow={stateShader.flow}
-              glow={0}
-              grain={0.14}
-              lightX={orbLightX}
-              lightY={orbLightY}
-              rim={stateShader.rim}
-              size="100%"
-              softness={0.0015}
-              specular={stateShader.specular}
-              speed={stateShader.speed}
-              turbulence={stateShader.turbulence}
-              wobble={stateShader.wobble}
-            />
+            <div
+              className="absolute"
+              style={{
+                height: `${orbCanvasSpan}%`,
+                left: `${orbCanvasOffset}%`,
+                top: `${orbCanvasOffset}%`,
+                width: `${orbCanvasSpan}%`,
+              }}
+            >
+              <Orb
+                amplitude={amplitudeValue}
+                className="size-full"
+                colors={[bodyColor, bodyEdgeColor]}
+                flow={stateShader.flow}
+                glow={0}
+                grain={0.14}
+                lightX={orbLightX}
+                lightY={orbLightY}
+                rim={stateShader.rim}
+                size="100%"
+                softness={0.0015}
+                specular={stateShader.specular}
+                speed={stateShader.speed}
+                turbulence={stateShader.turbulence}
+                wobble={stateShader.wobble}
+              />
+            </div>
           </div>
 
           <motion.svg

@@ -23,6 +23,7 @@ import {
   ArchitectedChallengeSetSchema,
   type ArchitectedChallengeSet,
 } from '../types/index.ts'
+import { craftStarterCodeForSet } from './starter-code-crafter.subagent.ts'
 
 export function createChallengeArchitectSubagent(model: LanguageModel) {
   return new ToolLoopAgent({
@@ -36,10 +37,15 @@ Requirements for EVERY challenge:
 3. "constraints": Realistic algorithmic constraints in clean Markdown/KaTeX (e.g. "$1 \\le n \\le 10^5$").
 4. "hints": 2–3 helpful, progressive hints without giving away the full code.
 5. "initialSolutions": Pure LeetCode-style starter function signatures ONLY — NO stdin/stdout boilerplate (no readFileSync, input(), cin/cout, or int main).
-   - Provide clean, syntactically valid stubs in all 4 keys: typescript, javascript, python, cpp.
-   - Use consistent parameter names & return types across languages matching "examples" and "testCases".
-6. "testCases": At least 2 concrete deterministic test cases with "input" (e.g. "nums = [1, 2, 3], k = 2") and exact serialized "expected" (e.g. "3" or "[0, 1]" or "true"). Include at least one hidden edge case with hidden: true when creating 3+ tests.
-7. Strictly respect the requested count, topic, difficulty distribution (for Progressive: ramp smoothly Easy -> Medium -> Hard), and questionStyle.`,
+   - Provide clean, syntactically valid, IDIOMATIC stubs in all 4 keys: typescript, javascript, python, cpp. NEVER copy TypeScript syntax into javascript, python, or cpp — each language MUST use its own native syntax:
+     * typescript: TypeScript parameter & return type annotations, e.g. \`function flatten(head: Node | null): Node | null { }\`
+     * javascript: Plain ES6 JavaScript with ZERO TypeScript type annotations, e.g. \`function flatten(head) { }\`
+     * python: Python 3 \`def\` signature (with optional Python type hints) and \`pass\`, NEVER \`function\`, e.g. \`def flatten(head: Optional[Node]) -> Optional[Node]:\n    pass\`
+     * cpp: Idiomatic C++ function or \`class Solution\` method using C++ types (\`vector<int>\`, \`string\`, \`Node*\`, \`ListNode*\`, \`TreeNode*\`, \`bool\`, \`int\`), NEVER the \`function\` keyword or \`: Type\` annotations, e.g. \`Node* flatten(Node* head) {\n    \n}\`
+   - Use consistent parameter names & logical return types across languages matching "examples" and "testCases".
+6. "testCases": At least 5 concrete deterministic test cases with "input" (e.g. "nums = [1, 2, 3], k = 2") and exact serialized "expected" (e.g. "3" or "[0, 1]" or "true"): include at least 2 visible sample test cases (hidden: false) and at least 3 hidden edge-case test cases marked with hidden: true.
+7. Strictly respect the requested count, topic, difficulty distribution (for Progressive: ramp smoothly Easy -> Medium -> Hard), and questionStyle.
+8. When generating a "Marathon Track": make every challenge map-adaptable for the Quest Map by setting a concise "title" (2-5 words), a progressive "milestoneLabel" (e.g. "Milestone 1: Warmup", "Milestone 2: Sliding Window", "Summit Boss"), and "isMilestoneCheckpoint: true" on key checkpoint stages (roughly every 3rd-4th stage and the final stage).`,
     output: Output.object({
       schema: ArchitectedChallengeSetSchema,
     }),
@@ -78,7 +84,7 @@ export function createChallengeArchitectTool(params: {
       difficulty: z
         .enum(['Easy', 'Medium', 'Hard', 'Progressive (Easy → Hard)'])
         .default('Medium'),
-      questionCount: z.number().int().min(1).max(15).default(3),
+      questionCount: z.number().default(3).describe('Integer between 1 and 15'),
       questionStyle: z
         .enum(['Implementation', 'Conceptual', 'Mixed'])
         .default('Implementation'),
@@ -121,11 +127,42 @@ export function createChallengeArchitectTool(params: {
       })
 
       const structured = result.output
-      const items = mapChallengeSetToPreviewItems(structured)
-      params.onBuilt(structured, items)
+      const normalizedStructured: ArchitectedChallengeSet = {
+        ...structured,
+        challenges: structured.challenges.map((ch) => {
+          const hiddenCount = ch.testCases.filter((tc) => Boolean(tc.hidden)).length
+          if (hiddenCount >= 3 || ch.testCases.length < 5) {
+            return ch
+          }
+          const hiddenStartIdx = Math.max(2, ch.testCases.length - 3)
+          return {
+            ...ch,
+            testCases: ch.testCases.map((tc, idx) =>
+              idx >= hiddenStartIdx ? { ...tc, hidden: true } : tc
+            ),
+          }
+        }),
+      }
+      params.emitEvent({
+        runId: params.runId,
+        type: 'agent-stage',
+        agent: 'starter-code-crafter',
+        label: 'Crafting idiomatic starter code...',
+        detail: 'Starter Code Crafter is building self-contained templates for TS, JS, Python, and C++',
+        toolName: 'invokeChallengeArchitect',
+      })
+
+      const craftedSet = await craftStarterCodeForSet({
+        model: params.getModel(),
+        set: normalizedStructured,
+        abortSignal,
+      })
+
+      const items = mapChallengeSetToPreviewItems(craftedSet)
+      params.onBuilt(craftedSet, items)
 
       return {
-        categoryTitle: structured.categoryTitle,
+        categoryTitle: craftedSet.categoryTitle,
         count: items.length,
         titles: items.map((item) => `${item.index}. ${item.title} (${item.difficulty}, ${item.style})`),
       }

@@ -1,3 +1,4 @@
+import { useAtomValue } from 'jotai'
 import { AppLayout } from '@layout'
 import { ChallengeSidebar, ChallengeWorkspace } from '@modules/challenge'
 import { HomeScreen, MarathonListScreen, CategoryProblemsScreen } from '@modules/home'
@@ -5,9 +6,17 @@ import { QuestionsFactoryScreen } from './modules/questions-factory'
 import { FavoritesScreen } from './modules/favorites'
 import { SettingsScreen } from '@modules/settings'
 import { TodosScreen } from '@modules/todos'
+import { OnboardingScreen } from './modules/profile/components/OnboardingScreen'
+import { ProfileScreen } from './modules/profile/screens/ProfileScreen'
+import { useProfileQuery, useSaveProfileMutation } from '@/shared/hooks/useWorkspaceQueries'
+import { submissionsAtom } from '@/shared/store'
 import { useAppWorkspace } from './app/useAppWorkspace'
 
 export function App() {
+  const submissions = useAtomValue(submissionsAtom)
+  const { data: profile, isLoading: isProfileLoading } = useProfileQuery()
+  const saveProfileMutation = useSaveProfileMutation()
+
   const {
     activeNav,
     problems,
@@ -102,6 +111,24 @@ export function App() {
       case 'todos':
         return <TodosScreen onReturnHome={returnHome} />
 
+      case 'profile':
+        return profile ? (
+          <ProfileScreen
+            profile={profile}
+            problems={problems}
+            submissions={submissions}
+            isSavingProfile={saveProfileMutation.isPending}
+            onSaveProfile={async (payload) => {
+              await saveProfileMutation.mutateAsync(payload)
+            }}
+            onOpenProblem={(problemId) => {
+              const target = problems.find((p) => p.id === problemId)
+              handleSelectCategory(target?.category ?? 'General', false)
+              handleOpenChallenge(problemId)
+            }}
+          />
+        ) : null
+
       default:
         return null
     }
@@ -122,13 +149,24 @@ export function App() {
     ) : null
 
   return (
-    <AppLayout
-      activeNav={activeNav}
-      onNavChange={handleNavChange}
-      secondarySidebar={secondarySidebar}
-    >
-      {renderScene()}
-    </AppLayout>
+    <>
+      <AppLayout
+        activeNav={activeNav}
+        onNavChange={handleNavChange}
+        secondarySidebar={secondarySidebar}
+      >
+        {renderScene()}
+      </AppLayout>
+
+      {!isProfileLoading && !profile && (
+        <OnboardingScreen
+          isSaving={saveProfileMutation.isPending}
+          onComplete={async (payload) => {
+            await saveProfileMutation.mutateAsync(payload)
+          }}
+        />
+      )}
+    </>
   )
 }
 

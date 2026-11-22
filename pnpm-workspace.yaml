@@ -1,6 +1,6 @@
 allowBuilds:
-  electron: set this to true or false
-  esbuild: set this to true or false
+  electron: true
+  esbuild: true
 minimumReleaseAgeExclude:
   - '@ai-sdk/gateway@4.0.146'
   - ai@7.0.173

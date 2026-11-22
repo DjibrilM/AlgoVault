@@ -3,7 +3,14 @@ import { QUERY_KEYS } from '@/shared/lib/queryClient'
 import { databaseClient } from '@/shared/services/databaseClient'
 import { aiClient } from '@/shared/services/aiClient'
 import { challengeService } from '@/modules/challenge/services/challengeService'
-import type { Problem, SupportedLang } from '@/shared/types/problem'
+import type {
+  CreateTodoInput,
+  Problem,
+  SaveUserProfileInput,
+  SupportedLang,
+  TodoRecordDto,
+  UserProfileDto,
+} from '@/shared/types/problem'
 import type { AiProviderId, SaveAiConfigDto } from '@/shared/types/ai'
 
 export function useWorkspaceQuery() {
@@ -11,6 +18,26 @@ export function useWorkspaceQuery() {
     queryKey: QUERY_KEYS.workspace,
     queryFn: () => databaseClient.getWorkspaceData(),
     enabled: databaseClient.isAvailable(),
+  })
+}
+
+export function useProfileQuery() {
+  return useQuery({
+    queryKey: QUERY_KEYS.profile,
+    queryFn: () => databaseClient.getProfile(),
+  })
+}
+
+export function useSaveProfileMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: SaveUserProfileInput) => databaseClient.saveProfile(payload),
+    onSuccess: (saved) => {
+      if (saved) {
+        qc.setQueryData<UserProfileDto | null>(QUERY_KEYS.profile, saved)
+      }
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.profile })
+    },
   })
 }
 
@@ -52,6 +79,7 @@ export function useSaveChallengeProgressMutation() {
     }) => databaseClient.saveChallengeProgress(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.workspace })
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos })
     },
   })
 }
@@ -63,6 +91,7 @@ export function useCreateCategoryMutation() {
       databaseClient.createCategory(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.workspace })
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos })
     },
   })
 }
@@ -89,10 +118,85 @@ export function useSubmitCodeMutation() {
     },
     onSuccess: (_result, variables) => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.workspace })
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos })
       void qc.invalidateQueries({ queryKey: ['submissions'] })
       void qc.invalidateQueries({
         queryKey: QUERY_KEYS.submissions(variables.problem.id),
       })
+    },
+  })
+}
+
+export function useTodosQuery() {
+  return useQuery({
+    queryKey: QUERY_KEYS.todos,
+    queryFn: () => databaseClient.getTodos(),
+  })
+}
+
+export function useCreateTodoMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: CreateTodoInput) => databaseClient.createTodo(payload),
+    onSuccess: (created) => {
+      if (created) {
+        qc.setQueryData<TodoRecordDto[]>(QUERY_KEYS.todos, (old = []) => [
+          created,
+          ...old.filter((item) => item.id !== created.id),
+        ])
+      }
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos, refetchType: 'all' })
+    },
+  })
+}
+
+export function useToggleTodoMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => databaseClient.toggleTodo(id),
+    onSuccess: (updated, id) => {
+      qc.setQueryData<TodoRecordDto[]>(QUERY_KEYS.todos, (old = []) =>
+        old.map((item) =>
+          item.id === id ? (updated ?? { ...item, completed: !item.completed }) : item
+        )
+      )
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos, refetchType: 'all' })
+    },
+  })
+}
+
+export function useToggleChallengeTodoMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (challengeId: number) => databaseClient.toggleChallengeTodo(challengeId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos, refetchType: 'all' })
+    },
+  })
+}
+
+export function useDeleteTodoMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => databaseClient.deleteTodo(id),
+    onSuccess: (_res, id) => {
+      qc.setQueryData<TodoRecordDto[]>(QUERY_KEYS.todos, (old = []) =>
+        old.filter((item) => item.id !== id)
+      )
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos, refetchType: 'all' })
+    },
+  })
+}
+
+export function useClearCompletedTodosMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => databaseClient.clearCompletedTodos(),
+    onSuccess: () => {
+      qc.setQueryData<TodoRecordDto[]>(QUERY_KEYS.todos, (old = []) =>
+        old.filter((item) => !item.completed)
+      )
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.todos, refetchType: 'all' })
     },
   })
 }

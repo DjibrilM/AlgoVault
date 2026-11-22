@@ -109,6 +109,14 @@ const DEFAULT_SOLUTIONS = {
   cpp: 'bool solve(int n) {\n    return n > 0;\n}',
 }
 
+const DEFAULT_TEST_CASES = [
+  { id: 1, input: 'n = 5', expected: 'true' },
+  { id: 2, input: 'n = 1', expected: 'true' },
+  { id: 3, input: 'n = 0', expected: 'false', hidden: true },
+  { id: 4, input: 'n = -7', expected: 'false', hidden: true },
+  { id: 5, input: 'n = 100000', expected: 'true', hidden: true },
+]
+
 function buildChallengeInput(
   topic: string,
   category: string | null,
@@ -128,7 +136,7 @@ function buildChallengeInput(
       'Aim for optimal time and space complexity.',
     ],
     initialSolutions: DEFAULT_SOLUTIONS,
-    testCases: [{ id: 1, input: 'n = 5', expected: 'true' }],
+    testCases: DEFAULT_TEST_CASES,
   }
 }
 
@@ -153,7 +161,7 @@ function buildFallbackProblems(
     hints: ['Start by identifying the core invariant and edge cases.'],
     tags: [categoryTitle, question.style],
     codeTemplates: DEFAULT_SOLUTIONS,
-    testCases: [{ id: 1, input: 'n = 5', expected: 'true' }],
+    testCases: DEFAULT_TEST_CASES,
   }))
 }
 

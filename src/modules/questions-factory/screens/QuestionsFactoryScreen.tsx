@@ -36,7 +36,6 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
     cancelGenerationRetry,
     completeOrbReturn,
     generatedQuestions,
-    isSimulating,
     liked,
     disliked,
     effectiveOrbState,
@@ -52,14 +51,13 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
     resumeConversation,
     startNewConversation,
     handleSubmit,
+    retryFailedMessage,
     handleFileChange ,
     removeAttachment,
     handleToggleLike,
     handleToggleDislike,
     handleCopy,
     openWorkspace,
-    runSimulation,
-    stopSimulation,
     stopAiActivity,
     aiStatus,
     availableModels,
@@ -74,21 +72,9 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
   return (
     <div className="h-full flex flex-col bg-[#1A1A1A] text-[#E5E5E5] select-none">
       <FactoryHeader
-        aiStatus={
-          aiStatus
-            ? {
-                ...aiStatus,
-                provider: activeProvider,
-                modelId: activeModelId || aiStatus.modelId,
-              }
-            : undefined
-        }
         isHistoryOpen={isHistoryOpen}
-        isSimulating={isSimulating}
         onBackToHome={onBackToHome}
-        onOpenSettings={openAiSettings}
         onToggleHistory={toggleHistory}
-        onToggleSimulation={() => (isSimulating ? stopSimulation() : void runSimulation())}
         orbSlotRef={orbSlotRef}
       />
 
@@ -99,6 +85,8 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
             liked={liked}
             messages={messages}
             onCopy={handleCopy}
+            onOpenSettings={openAiSettings}
+            onRetryMessage={(id) => void retryFailedMessage(id)}
             onToggleDislike={handleToggleDislike}
             onToggleLike={handleToggleLike}
           />

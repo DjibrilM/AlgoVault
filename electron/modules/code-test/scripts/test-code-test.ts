@@ -138,6 +138,52 @@ class MockCodeTestService implements ICodeTestService {
     return null
   }
 
+  async getTodos() {
+    return []
+  }
+
+  async createTodo(dto: {
+    title: string
+    notes?: string | null
+    importance?: 'low' | 'medium' | 'high' | 'critical'
+    deadline?: string | null
+    challengeId?: number | null
+  }) {
+    return {
+      id: 1,
+      title: dto.title,
+      notes: dto.notes ?? null,
+      importance: dto.importance ?? 'medium',
+      deadline: dto.deadline ?? null,
+      challengeId: dto.challengeId ?? null,
+      completed: false,
+    }
+  }
+
+  async toggleTodo() {
+    return null
+  }
+
+  async toggleChallengeTodo() {
+    return { queued: true }
+  }
+
+  async deleteTodo() {
+    return { deleted: true }
+  }
+
+  async clearCompletedTodos() {
+    return { cleared: 0 }
+  }
+
+  async getProfile() {
+    return null
+  }
+
+  async saveProfile(dto: { displayName: string; avatarId: string }) {
+    return { id: 1, ...dto }
+  }
+
   getStatus(): VmStatusDto {
     this.calls.push('getStatus')
     return { running: this.mockVmRunning, versions: { test: 'mock' } }
@@ -157,8 +203,8 @@ async function runTests() {
   const controller = new CodeTestController(mockService)
   controller.registerIpc(mockIpc as any)
 
-  assert.strictEqual(mockIpc.handlers.size, 13, 'Controller must register 13 IPC handlers')
-  console.log('   ✔ 13 IPC routes registered via controller')
+  assert.strictEqual(mockIpc.handlers.size, 21, 'Controller must register 21 IPC handlers')
+  console.log('   ✔ 21 IPC routes registered via controller')
 
   // Test code-test:evaluate
   const evalRes: EvaluationResultDto = await mockIpc.invoke(CODE_TEST_CHANNELS.EVALUATE, {
@@ -208,7 +254,7 @@ async function runTests() {
   assert.ok(codeTestModule instanceof CodeTestModule, 'forRoot() must return CodeTestModule instance')
   assert.ok(codeTestModule.service, 'Module must hold injected Service provider')
   assert.ok(codeTestModule.controller, 'Module must hold Controller with injected Service')
-  assert.strictEqual(moduleIpc.handlers.size, 13, 'OnModuleInit must automatically wire and register IPC routes')
+  assert.strictEqual(moduleIpc.handlers.size, 21, 'OnModuleInit must automatically wire and register IPC routes')
   console.log('   ✔ CodeTestModule.forRoot() wired providers into controllers and invoked onModuleInit()')
 
   await codeTestModule.onModuleDestroy()

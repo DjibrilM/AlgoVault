@@ -1,4 +1,5 @@
 import type { AIPromptAttachment } from '@/components/ui/smoothui/ai-prompt-input'
+import type { ClassifiedAiError } from '@/shared/utils/aiError'
 import type { GeneratedQuestionItem, GenerationDraft } from '../utils/draftEngine'
 
 /** Message rendered in the Questions Factory conversation feed. */
@@ -9,6 +10,9 @@ export interface StudioMessage {
   attachments?: AIPromptAttachment[]
   reasoning?: string
   isStreaming?: boolean
+  statusLabel?: string
+  retryCount?: number
+  errorInfo?: ClassifiedAiError
 }
 
 /** Destination workspace entity produced by a generation run. */

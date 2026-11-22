@@ -1,4 +1,5 @@
 export * from './LanguageIcons'
 export * from './ChallengeSidebar'
+export * from './ChallengeExplainerChat'
 export * from './ProblemDescription'
 export * from './TestCaseRunner'

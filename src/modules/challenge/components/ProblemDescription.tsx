@@ -8,6 +8,8 @@ import {
   XCircle,
   ChevronRight,
   ChevronDown,
+  BookOpen,
+  ListTodo,
 } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import { code } from '@streamdown/code'
@@ -20,12 +22,15 @@ import { CodeViewer } from '@/shared/components/CodeViewer'
 import {
   useFavoritesQuery,
   useSubmissionsQuery,
+  useTodosQuery,
+  useToggleChallengeTodoMutation,
   useToggleFavoriteMutation,
 } from '@/shared/hooks/useWorkspaceQueries'
 import { databaseClient } from '@/shared/services/databaseClient'
 import { Difficulty, Problem } from '@/shared/types/problem'
 import { ProblemDescriptionProps } from '../types'
 import { challengeService } from '../services/challengeService'
+import { ChallengeExplainerChat } from './ChallengeExplainerChat'
 
 const math = createMathPlugin({ singleDollarTextMath: true })
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk }
@@ -52,16 +57,23 @@ export function ProblemDescription({
   problem = DEFAULT_PROBLEM,
   headerActions,
   isStreaming = false,
+  currentCode,
+  selectedLang,
 }: ProblemDescriptionProps) {
-  const [activeTab, setActiveTab] = useState<'description' | 'hints' | 'submissions'>('description')
+  const [activeTab, setActiveTab] = useState<'description' | 'hints' | 'submissions' | 'chat'>(
+    'description'
+  )
   const [expandedHints, setExpandedHints] = useState<Record<number, boolean>>({})
   const [expandedSubmissions, setExpandedSubmissions] = useState<Record<number, boolean>>({})
   const { data: problemSubmissions = [] } = useSubmissionsQuery(problem.id)
   const { data: favorites = [] } = useFavoritesQuery()
+  const { data: todos = [] } = useTodosQuery()
   const toggleFavoriteMutation = useToggleFavoriteMutation()
+  const toggleChallengeTodoMutation = useToggleChallengeTodoMutation()
   const isFavorited = databaseClient.isAvailable()
     ? favorites.some((fav) => fav.challengeId === problem.id)
     : Boolean(problem.starred)
+  const isInTodos = todos.some((todo) => todo.challengeId === problem.id)
 
   const toggleSubmission = (id: number) => {
     setExpandedSubmissions((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -89,6 +101,12 @@ export function ProblemDescription({
       label: 'Submissions',
       icon: CheckCircle2,
       iconColor: 'text-[#16A34A]',
+    },
+    {
+      id: 'chat' as const,
+      label: 'Guide',
+      icon: BookOpen,
+      iconColor: 'text-white',
     },
   ]
 
@@ -128,7 +146,7 @@ export function ProblemDescription({
                 <span className="relative z-10 flex items-center gap-1.5">
                   <Icon
                     className={cn('h-3.5 w-3.5', tab.iconColor, {
-                      'fill-current': isActive,
+                      'fill-current': isActive && tab.id !== 'chat',
                     })}
                   />
                   <span>{tab.label}</span>
@@ -140,6 +158,19 @@ export function ProblemDescription({
 
         <div className="flex items-center gap-1 text-[#A3A3A3]">
           {headerActions}
+          <button
+            type="button"
+            onClick={() => toggleChallengeTodoMutation.mutate(problem.id)}
+            disabled={toggleChallengeTodoMutation.isPending}
+            className="p-1 rounded hover:bg-[#262626] hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+            title={isInTodos ? 'Remove from To-dos' : 'Add to To-dos'}
+          >
+            <ListTodo
+              className={cn('h-3.5 w-3.5', {
+                'text-[#10B981]': isInTodos,
+              })}
+            />
+          </button>
           <button
             type="button"
             onClick={() => toggleFavoriteMutation.mutate(problem.id)}
@@ -157,16 +188,25 @@ export function ProblemDescription({
       </div>
 
       {/* Pane Content with Framer Motion Smooth Transition */}
-      <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`${problem.id}-${activeTab}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.14, ease: 'easeOut' }}
-            className="space-y-6"
-          >
+      {activeTab === 'chat' ? (
+        <div className="relative flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+          <ChallengeExplainerChat
+            problem={problem}
+            currentCode={currentCode}
+            selectedLang={selectedLang}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${problem.id}-${activeTab}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.14, ease: 'easeOut' }}
+              className="space-y-6"
+            >
             {activeTab === 'description' && (
               <>
                 {/* Title & Metadata */}
@@ -401,6 +441,7 @@ export function ProblemDescription({
           </motion.div>
         </AnimatePresence>
       </div>
+      )}
     </div>
   )
 }

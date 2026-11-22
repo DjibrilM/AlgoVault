@@ -11,6 +11,7 @@ import {
 import { aiClient } from '@/shared/services/aiClient'
 import { activeNavAtom } from '@/shared/store'
 import type { AiAgentRole, AiProviderId } from '@/shared/types/ai'
+import { classifyAiError } from '@/shared/utils/aiError'
 import type {
   FactoryConversationSnapshot,
   GeneratedTarget,
@@ -73,7 +74,7 @@ export function useQuestionsFactory() {
   const saveAiConfigMutation = useSaveAiConfigMutation()
   const [selectedModelOverride, setSelectedModelOverride] = useState<string | null>(null)
   const [selectedProviderOverride, setSelectedProviderOverride] = useState<AiProviderId | null>(null)
-  const activeProvider: AiProviderId = selectedProviderOverride ?? aiStatus?.provider ?? 'gateway'
+  const activeProvider: AiProviderId = selectedProviderOverride ?? aiStatus?.provider ?? 'google'
   const activeModelId = selectedModelOverride ?? aiStatus?.modelId ?? ''
   const {
     data: availableModels = [],
@@ -232,7 +233,12 @@ export function useQuestionsFactory() {
   }, [])
 
   const runLiveAiTurn = useCallback(
-    async (prompt: string, historyForRun: StudioMessage[], initialDraft: GenerationDraft | null) => {
+    async (
+      prompt: string,
+      historyForRun: StudioMessage[],
+      initialDraft: GenerationDraft | null,
+      retryOpts?: { retryMessageId?: string; baseRetryCount?: number }
+    ) => {
       const willForceGenerate = Boolean(
         initialDraft?.readyToGenerate && !initialDraft.generated && isConfirmationIntent(prompt)
       )
@@ -245,9 +251,10 @@ export function useQuestionsFactory() {
       }
 
       let currentDraftForRetry = baseDraft
-      let attempt = 0
+      let attempt = retryOpts?.baseRetryCount ?? 0
       let executorRunId: number | null = null
       let shouldContinue = true
+      const reuseMessageId = retryOpts?.retryMessageId
 
       if (willForceGenerate) {
         executorRunId = startAgentGeneration({
@@ -263,24 +270,44 @@ export function useQuestionsFactory() {
         attempt += 1
         const runId = `ai-run-${Date.now()}-${attempt}`
         activeAiRunIdRef.current = runId
-        const assistantId = `assistant-${Date.now()}`
+        const assistantId = attempt === (retryOpts?.baseRetryCount ?? 0) + 1 && reuseMessageId
+          ? reuseMessageId
+          : `assistant-${Date.now()}`
 
         if (!executorRunId) {
           updateAiActivity('thinking')
         }
 
-        appendMessage({
-          id: assistantId,
-          from: 'assistant',
-          content: '',
-          reasoning: '',
-          isStreaming: true,
-        })
+        const initialStatus =
+          attempt > 1 ? `Retrying (attempt ${attempt})…` : 'Reviewing your request…'
 
-        const stageStepMap: Record<AiAgentRole, number> = {
+        if (assistantId === reuseMessageId) {
+          updateMessageById(assistantId, (msg) => ({
+            ...msg,
+            content: '',
+            reasoning: '',
+            isStreaming: true,
+            statusLabel: initialStatus,
+            retryCount: attempt,
+            errorInfo: undefined,
+          }))
+        } else {
+          appendMessage({
+            id: assistantId,
+            from: 'assistant',
+            content: '',
+            reasoning: '',
+            isStreaming: true,
+            statusLabel: initialStatus,
+            ...(attempt > 1 ? { retryCount: attempt } : {}),
+          })
+        }
+
+        const stageStepMap: Partial<Record<AiAgentRole, number>> = {
           master: 0,
           'catalog-analyst': 1,
           'challenge-architect': 2,
+          'starter-code-crafter': 2,
           'challenge-verifier': 3,
         }
 
@@ -302,6 +329,7 @@ export function useQuestionsFactory() {
             updateMessageById(assistantId, (msg) => ({
               ...msg,
               content: `${msg.content}${event.delta}`,
+              statusLabel: undefined,
             }))
             return
           }
@@ -315,6 +343,11 @@ export function useQuestionsFactory() {
           }
 
           if (event.type === 'agent-stage') {
+            updateMessageById(assistantId, (msg) => ({
+              ...msg,
+              statusLabel: event.label,
+            }))
+
             const isOrchestratedStage =
               event.agent === 'catalog-analyst' ||
               event.agent === 'challenge-architect' ||
@@ -344,6 +377,17 @@ export function useQuestionsFactory() {
                   : 'thinking'
               )
             }
+            return
+          }
+
+          if (event.type === 'error') {
+            const classified = classifyAiError(event.message)
+            updateMessageById(assistantId, (msg) => ({
+              ...msg,
+              isStreaming: false,
+              statusLabel: undefined,
+              errorInfo: classified,
+            }))
           }
         })
 
@@ -377,6 +421,8 @@ export function useQuestionsFactory() {
             content: result.text || msg.content,
             reasoning: result.reasoning || msg.reasoning || undefined,
             isStreaming: false,
+            statusLabel: undefined,
+            errorInfo: undefined,
           }))
 
           const nextDraft = result.draft ?? draftRef.current
@@ -427,21 +473,28 @@ export function useQuestionsFactory() {
             activeAiRunIdRef.current = null
           }
           const errorMessage = err instanceof Error ? err.message : String(err)
+          const classified = classifyAiError(errorMessage)
 
           if (executorRunId) {
-            removeMessageById(assistantId)
-            const decision = await failAgentGeneration(executorRunId, errorMessage, 4)
+            const decision = await failAgentGeneration(executorRunId, classified.summary, 4)
             if (decision === 'retry') {
+              updateMessageById(assistantId, (msg) => ({
+                ...msg,
+                statusLabel: `Retrying (attempt ${attempt + 1})…`,
+                retryCount: attempt + 1,
+                errorInfo: undefined,
+              }))
               shouldContinue = true
               continue
             }
-            return
           }
 
           updateMessageById(assistantId, (msg) => ({
             ...msg,
-            content: `Could not reach the AI provider: ${errorMessage}\n\nYou can inspect or update your model credentials in **Settings**.`,
             isStreaming: false,
+            statusLabel: undefined,
+            retryCount: attempt,
+            errorInfo: classified,
           }))
           updateAiActivity('error')
           setTimeout(() => updateAiActivity('idle'), 2000)
@@ -727,6 +780,29 @@ export function useQuestionsFactory() {
     resumeConversation,
     startNewConversation,
     handleSubmit,
+    retryFailedMessage: async (messageId: string) => {
+      if (aiActivityRef.current === 'thinking' || isGeneratingRef.current) return
+      const currentMessages = messagesRef.current
+      const idx = currentMessages.findIndex((m) => m.id === messageId)
+      if (idx <= 0) return
+
+      let userPrompt = ''
+      let historyEndIdx = idx
+      for (let i = idx - 1; i >= 0; i--) {
+        if (currentMessages[i].from === 'user') {
+          userPrompt = currentMessages[i].content
+          historyEndIdx = i + 1
+          break
+        }
+      }
+      if (!userPrompt.trim()) return
+
+      const failedMsg = currentMessages[idx]
+      await runLiveAiTurn(userPrompt, currentMessages.slice(0, historyEndIdx), draftRef.current, {
+        retryMessageId: messageId,
+        baseRetryCount: failedMsg.retryCount ?? 1,
+      })
+    },
     handleFileChange,
     removeAttachment,
     handleToggleLike,

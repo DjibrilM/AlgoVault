@@ -27,12 +27,12 @@ export const AiSettingsEntity = new EntitySchema<AiSettingsRecord>({
     provider: {
       type: 'varchar',
       length: 32,
-      default: 'gateway',
+      default: 'google',
     },
     modelId: {
       type: 'varchar',
       length: 160,
-      default: 'anthropic/claude-sonnet-4.5',
+      default: 'gemini-2.5-flash',
     },
     apiKey: {
       type: 'text',

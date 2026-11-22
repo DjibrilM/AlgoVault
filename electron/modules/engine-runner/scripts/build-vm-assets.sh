@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Automates building all AlgoVault sandbox VM assets for macos-arm64 and macos-x64:
-#   1. Linux Kernel ('Image') from Buildroot (/Users/jib/buildroot) via Docker
-#   2. QEMU emulator binaries ('qemu-system-aarch64' & 'qemu-system-x86_64') from /Users/jib/src/qemu
+#   1. Linux Kernel ('Image') from Buildroot ($HOME/buildroot, auto-cloned if missing) via Docker
+#   2. QEMU emulator binaries ('qemu-system-aarch64' & 'qemu-system-x86_64') from $HOME/src/qemu (auto-cloned if missing)
 #   3. Alpine Linux 'rootfs.ext4' disk images via ./build-rootfs.sh
 #
 # Usage:
@@ -16,8 +16,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
-BUILDROOT_DIR="${BUILDROOT_DIR:-/Users/jib/buildroot}"
-QEMU_SRC_DIR="${QEMU_SRC_DIR:-/Users/jib/src/qemu}"
+BUILDROOT_DIR="${BUILDROOT_DIR:-$HOME/buildroot}"
+QEMU_SRC_DIR="${QEMU_SRC_DIR:-$HOME/src/qemu}"
+BUILDROOT_REPO="${BUILDROOT_REPO:-https://gitlab.com/buildroot.org/buildroot.git}"
+QEMU_REPO="${QEMU_REPO:-https://gitlab.com/qemu-project/qemu.git}"
 
 TARGET_ARCH="all"
 DO_KERNEL=1
@@ -60,16 +62,29 @@ should_build_arch() {
   [[ "$TARGET_ARCH" == "all" || "$TARGET_ARCH" == "$want" ]]
 }
 
+ensure_buildroot_dir() {
+  if [[ ! -f "$BUILDROOT_DIR/Makefile" ]]; then
+    echo "==> Buildroot not found at $BUILDROOT_DIR; cloning from $BUILDROOT_REPO..."
+    mkdir -p "$(dirname "$BUILDROOT_DIR")"
+    git clone --depth 1 "$BUILDROOT_REPO" "$BUILDROOT_DIR"
+  fi
+}
+
+ensure_qemu_src_dir() {
+  if [[ ! -f "$QEMU_SRC_DIR/configure" ]]; then
+    echo "==> QEMU source not found at $QEMU_SRC_DIR; cloning from $QEMU_REPO..."
+    mkdir -p "$(dirname "$QEMU_SRC_DIR")"
+    git clone --depth 1 "$QEMU_REPO" "$QEMU_SRC_DIR"
+  fi
+}
+
 # --------------------------------------------------------------------------- #
-# 1. Build Linux Kernel from Buildroot (/Users/jib/buildroot)
+# 1. Build Linux Kernel from Buildroot ($BUILDROOT_DIR)
 # --------------------------------------------------------------------------- #
 build_kernel_for_arch() {
   local arch="$1"
 
-  if [[ ! -d "$BUILDROOT_DIR" ]]; then
-    echo "Error: Buildroot directory not found at $BUILDROOT_DIR" >&2
-    exit 1
-  fi
+  ensure_buildroot_dir
 
   if [[ "$arch" == "arm64" ]]; then
     local out_dir="$ROOT/assets/macos-arm64"
@@ -100,6 +115,10 @@ build_kernel_for_arch() {
 
   elif [[ "$arch" == "x64" ]]; then
     local out_dir="$ROOT/assets/macos-x64"
+    if [[ -f "$out_dir/Image" ]]; then
+      echo "==> Reusing existing x86_64 kernel at $out_dir/Image"
+      return 0
+    fi
     echo "==> Building x86_64 Linux kernel from Buildroot ($BUILDROOT_DIR)..."
 
     # Ensure CONFIG_HW_RANDOM and CONFIG_HW_RANDOM_VIRTIO are built-in (=y)
@@ -134,16 +153,22 @@ build_kernel_for_arch() {
   fi
 }
 
+ensure_qemu_build_deps() {
+  if ! command -v ninja >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then
+    echo "Error: ninja and pkg-config are required to build QEMU. Install them with:" >&2
+    echo "  HOMEBREW_NO_AUTO_UPDATE=1 brew install ninja pkg-config glib pixman" >&2
+    exit 1
+  fi
+}
+
 # --------------------------------------------------------------------------- #
-# 2. Build QEMU System Binaries from /Users/jib/src/qemu
+# 2. Build QEMU System Binaries from $QEMU_SRC_DIR
 # --------------------------------------------------------------------------- #
 build_qemu_for_arch() {
   local arch="$1"
 
-  if [[ ! -d "$QEMU_SRC_DIR" ]]; then
-    echo "Error: QEMU source directory not found at $QEMU_SRC_DIR" >&2
-    exit 1
-  fi
+  ensure_qemu_src_dir
+  ensure_qemu_build_deps
 
   if [[ "$arch" == "arm64" ]]; then
     local out_dir="$ROOT/assets/macos-arm64"
@@ -195,7 +220,16 @@ if [[ "$DO_QEMU" -eq 1 ]]; then
 fi
 
 if [[ "$DO_ROOTFS" -eq 1 ]]; then
-  "$HERE/build-rootfs.sh" --arch "$TARGET_ARCH"
+  if should_build_arch "arm64" && [[ ! -f "$ROOT/assets/macos-arm64/rootfs.ext4" ]]; then
+    "$HERE/build-rootfs.sh" --arch arm64
+  elif should_build_arch "arm64"; then
+    echo "==> Reusing existing arm64 rootfs at $ROOT/assets/macos-arm64/rootfs.ext4"
+  fi
+  if should_build_arch "x64" && [[ ! -f "$ROOT/assets/macos-x64/rootfs.ext4" ]]; then
+    "$HERE/build-rootfs.sh" --arch x64
+  elif should_build_arch "x64"; then
+    echo "==> Reusing existing x64 rootfs at $ROOT/assets/macos-x64/rootfs.ext4"
+  fi
 fi
 
 echo ""

@@ -36,23 +36,73 @@ export function auditArchitectedChallengeSet(set: ArchitectedChallengeSet): Veri
       warnings.push(`${label}: could not detect a top-level function/Solution method in TypeScript template`)
     }
 
-    const jsMeta = extractFunctionMetadata(ch.initialSolutions.javascript)
+    const jsCode = ch.initialSolutions.javascript
+    const pyCode = ch.initialSolutions.python
+    const cppCode = ch.initialSolutions.cpp
+    const tsCode = ch.initialSolutions.typescript
+
+    const jsMeta = extractFunctionMetadata(jsCode)
     if (!jsMeta) {
       warnings.push(`${label}: could not detect a top-level function/Solution method in JavaScript template`)
     }
 
-    if (ch.initialSolutions.typescript.includes('readFileSync')) {
+    // 3. Ensure each language uses its own native syntax (no TS/JS leakage across languages)
+    if (/\)\s*:\s*[A-Za-z_${[]/.test(jsCode) || /\b[A-Za-z_]\w*\s*:\s*(number|string|boolean|any|unknown|void|null|undefined|Record|Array)\b/.test(jsCode)) {
+      issues.push(`${label}: JavaScript starter contains TypeScript type annotations; remove all ': Type' annotations`)
+    }
+    if (!/\bdef\s+[A-Za-z_]\w*\s*\(/.test(pyCode) || /\bfunction\s+[A-Za-z_]/.test(pyCode)) {
+      issues.push(`${label}: Python starter must use a Python 'def ...():' signature, not JS/TS 'function'`)
+    }
+    if (!cppCode.trim() || /\bfunction\s+[A-Za-z_]/.test(cppCode) || /\b:\s*(number|string|boolean|any|unknown|null|undefined)\b/.test(cppCode)) {
+      issues.push(`${label}: C++ starter must use C++ return/parameter types, not JS/TS 'function' or ': Type' syntax`)
+    }
+    if (/:\s*\w+/.test(tsCode) && (jsCode.trim() === tsCode.trim() || cppCode.trim() === tsCode.trim())) {
+      issues.push(`${label}: starter code was copied identically across languages; each language must use its own syntax`)
+    }
+
+    // 4. Ensure custom node/struct types referenced in starter signatures are actually defined
+    const customTypeNames = ['Node', 'ListNode', 'TreeNode', 'DoublyListNode', 'GraphNode', 'Interval']
+    for (const typeName of customTypeNames) {
+      const typeRefRe = new RegExp(`\\b${typeName}\\b`)
+      if (typeRefRe.test(tsCode)) {
+        const tsDeclRe = new RegExp(`\\b(?:interface|class|type)\\s+${typeName}\\b`)
+        if (!tsDeclRe.test(tsCode)) {
+          issues.push(`${label}: TypeScript starter references "${typeName}" without defining interface/class/type ${typeName}`)
+        }
+      }
+      if (typeRefRe.test(cppCode)) {
+        const cppDeclRe = new RegExp(`\\b(?:class|struct)\\s+${typeName}\\b`)
+        if (!cppDeclRe.test(cppCode)) {
+          issues.push(`${label}: C++ starter references "${typeName}" without defining class/struct ${typeName}`)
+        }
+      }
+      if (typeRefRe.test(pyCode)) {
+        const pyDeclRe = new RegExp(`\\bclass\\s+${typeName}\\b`)
+        if (!pyDeclRe.test(pyCode)) {
+          issues.push(`${label}: Python starter references "${typeName}" without defining class ${typeName}`)
+        }
+      }
+    }
+
+    if (tsCode.includes('readFileSync')) {
       warnings.push(`${label}: TypeScript starter includes raw stdin boilerplate instead of pure function signature`)
     }
-    if (ch.initialSolutions.python.includes('sys.stdin') || ch.initialSolutions.python.includes('input(')) {
+    if (pyCode.includes('sys.stdin') || pyCode.includes('input(')) {
       warnings.push(`${label}: Python starter includes stdin boilerplate instead of pure def signature`)
     }
-    if (ch.initialSolutions.cpp.includes('int main')) {
+    if (cppCode.includes('int main')) {
       warnings.push(`${label}: C++ starter includes int main() instead of pure function/Solution method`)
     }
 
-    if (ch.testCases.length < 2) {
-      issues.push(`${label}: expected at least 2 test cases, found ${ch.testCases.length}`)
+    if (ch.testCases.length < 5) {
+      issues.push(
+        `${label}: expected at least 5 test cases (2 visible + 3 hidden), found ${ch.testCases.length}`
+      )
+    }
+
+    const hiddenCount = ch.testCases.filter((tc) => Boolean(tc.hidden)).length
+    if (hiddenCount < 3) {
+      issues.push(`${label}: expected at least 3 hidden test cases, found ${hiddenCount}`)
     }
 
     if (ch.examples.length < 1) {

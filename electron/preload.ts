@@ -54,6 +54,8 @@ const aiBridge: AiBridge = {
   listModels: (dto) => ipcRenderer.invoke(AI_CHANNELS.LIST_MODELS, dto),
   testConnection: (dto) => ipcRenderer.invoke(AI_CHANNELS.TEST_CONNECTION, dto),
   runStudioTurn: (dto) => ipcRenderer.invoke(AI_CHANNELS.RUN_STUDIO_TURN, dto),
+  runSolutionFeedback: (dto) => ipcRenderer.invoke(AI_CHANNELS.RUN_SOLUTION_FEEDBACK, dto),
+  runChallengeChat: (dto) => ipcRenderer.invoke(AI_CHANNELS.RUN_CHALLENGE_CHAT, dto),
   abortRun: (runId) => ipcRenderer.invoke(AI_CHANNELS.ABORT_RUN, runId),
   onStreamEvent(listener) {
     const handler = (_event: Electron.IpcRendererEvent, streamEvent: AiStreamEvent) => {

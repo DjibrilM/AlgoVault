@@ -115,11 +115,72 @@ export interface StudioTurnResultDto {
   aborted?: boolean
 }
 
+export interface ChallengeContextDto {
+  id: number
+  title: string
+  difficulty: 'Easy' | 'Medium' | 'Hard'
+  category: string
+  description: string
+  constraints: string[]
+  examples: Array<{ input: string; output: string; explanation?: string }>
+  hints?: string[]
+  tags?: string[]
+}
+
+export interface SolutionFeedbackRequestDto {
+  runId: string
+  problem: ChallengeContextDto
+  code: string
+  lang: string
+  submission: {
+    status: 'success' | 'error'
+    verdict?: string
+    runtime?: string
+    memory?: string
+    passedCases?: number
+    totalCases?: number
+    failedCaseIndex?: number
+    expected?: string
+    actual?: string
+    output?: string
+    compileError?: string
+  }
+  modelId?: string
+}
+
+export interface SolutionFeedbackResultDto {
+  runId: string
+  text: string
+  reasoning?: string
+  cached?: boolean
+  aborted?: boolean
+}
+
+export interface ChallengeChatRequestDto {
+  runId: string
+  problem: ChallengeContextDto
+  prompt: string
+  messages: StudioMessageDto[]
+  currentCode?: string
+  currentLang?: string
+  modelId?: string
+}
+
+export interface ChallengeChatResultDto {
+  runId: string
+  text: string
+  reasoning?: string
+  aborted?: boolean
+}
+
 export type AiAgentRole =
   | 'master'
   | 'catalog-analyst'
   | 'challenge-architect'
+  | 'starter-code-crafter'
   | 'challenge-verifier'
+  | 'solution-coach'
+  | 'challenge-explainer'
 
 export type AiStreamEvent =
   | { runId: string; type: 'text-delta'; delta: string }
@@ -147,6 +208,8 @@ export const AI_CHANNELS = {
   LIST_MODELS: 'ai:list-models',
   TEST_CONNECTION: 'ai:test-connection',
   RUN_STUDIO_TURN: 'ai:run-studio-turn',
+  RUN_SOLUTION_FEEDBACK: 'ai:run-solution-feedback',
+  RUN_CHALLENGE_CHAT: 'ai:run-challenge-chat',
   ABORT_RUN: 'ai:abort-run',
   STREAM_EVENT: 'ai:stream-event',
 } as const
@@ -157,43 +220,63 @@ export interface AiBridge {
   listModels: (dto?: SaveAiConfigDto) => Promise<AiModelOptionDto[]>
   testConnection: (dto?: SaveAiConfigDto) => Promise<AiConnectionTestResultDto>
   runStudioTurn: (dto: StudioTurnRequestDto) => Promise<StudioTurnResultDto>
+  runSolutionFeedback: (dto: SolutionFeedbackRequestDto) => Promise<SolutionFeedbackResultDto>
+  runChallengeChat: (dto: ChallengeChatRequestDto) => Promise<ChallengeChatResultDto>
   abortRun: (runId: string) => Promise<{ aborted: boolean }>
   onStreamEvent: (listener: (event: AiStreamEvent) => void) => () => void
 }
 
+export const GEMINI_MODEL_PRESETS: AiModelOptionDto[] = [
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    provider: 'google',
+    description: 'Fast, balanced multimodal & coding model',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    provider: 'google',
+    description: 'Deep reasoning for complex algorithmic challenges',
+  },
+  {
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash Lite',
+    provider: 'google',
+    description: 'High-speed, lightweight model for quick iterations',
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash Preview',
+    provider: 'google',
+    description: 'Next-generation fast reasoning & coding preview',
+  },
+  {
+    id: 'gemini-3-pro-preview',
+    name: 'Gemini 3 Pro Preview',
+    provider: 'google',
+    description: 'Next-generation flagship reasoning preview',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'google',
+    description: 'General-purpose fast generation',
+  },
+  {
+    id: 'gemini-2.0-flash-lite',
+    name: 'Gemini 2.0 Flash Lite',
+    provider: 'google',
+    description: 'Lightweight low-latency generation',
+  },
+]
+
 export const AI_MODEL_PRESETS: Record<AiProviderId, AiModelOptionDto[]> = {
-  gateway: [
-    { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5', provider: 'anthropic' },
-    { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'anthropic' },
-    { id: 'anthropic/claude-opus-4.5', name: 'Claude Opus 4.5', provider: 'anthropic' },
-    { id: 'openai/gpt-5-mini', name: 'GPT-5 mini', provider: 'openai' },
-    { id: 'openai/gpt-5', name: 'GPT-5', provider: 'openai' },
-    { id: 'openai/gpt-4.1-mini', name: 'GPT-4.1 mini', provider: 'openai' },
-    { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google' },
-    { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google' },
-    { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', provider: 'deepseek' },
-  ],
-  openai: [
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 mini', provider: 'openai' },
-    { id: 'gpt-4.1', name: 'GPT-4.1', provider: 'openai' },
-    { id: 'gpt-5-mini', name: 'GPT-5 mini', provider: 'openai' },
-    { id: 'gpt-5', name: 'GPT-5', provider: 'openai' },
-    { id: 'o4-mini', name: 'o4-mini', provider: 'openai' },
-  ],
-  anthropic: [
-    { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', provider: 'anthropic' },
-    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic' },
-    { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', provider: 'anthropic' },
-  ],
-  google: [
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google' },
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google' },
-  ],
-  'openai-compatible': [
-    { id: 'local-model', name: 'Default Local Model', provider: 'local' },
-    { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder', provider: 'local' },
-    { id: 'llama-3.3-70b-instruct', name: 'Llama 3.3 70B', provider: 'local' },
-  ],
+  gateway: GEMINI_MODEL_PRESETS,
+  openai: GEMINI_MODEL_PRESETS,
+  anthropic: GEMINI_MODEL_PRESETS,
+  google: GEMINI_MODEL_PRESETS,
+  'openai-compatible': GEMINI_MODEL_PRESETS,
 }
 
 export interface AiModelProviderGroup {
@@ -280,13 +363,7 @@ export function groupModelsByProvider(models: AiModelOptionDto[]): AiModelProvid
     }))
 }
 
-export const AI_PROVIDER_ORDER: AiProviderId[] = [
-  'gateway',
-  'openai',
-  'anthropic',
-  'google',
-  'openai-compatible',
-]
+export const AI_PROVIDER_ORDER: AiProviderId[] = ['google']
 
 export const AI_PROVIDER_DEFAULTS: Record<
   AiProviderId,
@@ -317,8 +394,8 @@ export const AI_PROVIDER_DEFAULTS: Record<
     label: 'Google Gemini',
     modelId: 'gemini-2.5-flash',
     baseUrl: '',
-    placeholderKey: 'AIza...',
-    description: 'Direct Google Generative AI using GOOGLE_GENERATIVE_AI_API_KEY.',
+    placeholderKey: 'AIza... (or GOOGLE_GENERATIVE_AI_API_KEY)',
+    description: 'Direct Google AI Studio Gemini API via @ai-sdk/google (GOOGLE_GENERATIVE_AI_API_KEY).',
   },
   'openai-compatible': {
     label: 'Local / OpenAI-Compatible (LM Studio, Ollama)',

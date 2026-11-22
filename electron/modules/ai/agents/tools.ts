@@ -17,6 +17,7 @@ import type {
 } from '../../../../src/shared/types/ai.ts'
 import type { CodeTestService } from '../../code-test/services/code-test.service.ts'
 import type { ArchitectedChallengeSet } from '../types/index.ts'
+import { auditArchitectedChallengeSet } from './challenge-verifier.agent.ts'
 
 export function isDraftComplete(draft: GenerationDraft): boolean {
   return Boolean(
@@ -62,7 +63,7 @@ export function createUpdateDraftTool(params: {
         .enum(['Easy', 'Medium', 'Hard', 'Progressive (Easy → Hard)'])
         .nullable()
         .optional(),
-      questionCount: z.number().int().min(1).max(15).nullable().optional(),
+      questionCount: z.number().nullable().optional().describe('Integer between 1 and 15'),
       questionStyle: z
         .enum(['Implementation', 'Conceptual', 'Mixed'])
         .nullable()
@@ -160,6 +161,13 @@ export function createSaveChallengeSetTool(params: {
         throw new Error('No architected challenge set buffered to save.')
       }
 
+      const audit = auditArchitectedChallengeSet(builtSet)
+      if (!audit.valid) {
+        throw new Error(
+          `Cannot save challenge set because verification failed:\n- ${audit.issues.join('\n- ')}\nFix these issues with architectChallenges before saving.`
+        )
+      }
+
       const draft = params.getDraft()
       const topicTitle = titleOverride?.trim() || builtSet.categoryTitle || draft.topic || 'Custom Practice'
       const isMarathon = draft.contentType === 'Marathon Track'
@@ -192,7 +200,12 @@ export function createSaveChallengeSetTool(params: {
             description: ch.description,
             difficulty: ch.difficulty,
             hints: ch.hints,
-            tags: [topicTitle, ch.style],
+            tags: [
+              topicTitle,
+              ch.style,
+              ...(ch.milestoneLabel?.trim() ? [`milestone:${ch.milestoneLabel.trim()}`] : []),
+              ...(ch.isMilestoneCheckpoint ? ['milestone-checkpoint'] : []),
+            ],
             examples: ch.examples.map((ex, idx) => ({
               id: idx + 1,
               input: ex.input,

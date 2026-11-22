@@ -170,6 +170,73 @@ export class CodeTestController implements ICodeTestController {
         return this.codeTestService.saveFactoryConversation(dto)
       }
     )
+
+    // Message pattern: db:get-todos
+    targetIpc.handle(CODE_TEST_CHANNELS.GET_TODOS, async () => {
+      return this.codeTestService.getTodos()
+    })
+
+    // Message pattern: db:create-todo
+    targetIpc.handle(
+      CODE_TEST_CHANNELS.CREATE_TODO,
+      async (
+        _event: IpcMainInvokeEvent,
+        dto: {
+          title: string
+          notes?: string | null
+          importance?: 'low' | 'medium' | 'high' | 'critical'
+          deadline?: string | null
+          challengeId?: number | null
+        }
+      ) => {
+        return this.codeTestService.createTodo(dto)
+      }
+    )
+
+    // Message pattern: db:toggle-todo
+    targetIpc.handle(
+      CODE_TEST_CHANNELS.TOGGLE_TODO,
+      async (_event: IpcMainInvokeEvent, id: number) => {
+        return this.codeTestService.toggleTodo(id)
+      }
+    )
+
+    // Message pattern: db:toggle-challenge-todo
+    targetIpc.handle(
+      CODE_TEST_CHANNELS.TOGGLE_CHALLENGE_TODO,
+      async (_event: IpcMainInvokeEvent, challengeId: number) => {
+        return this.codeTestService.toggleChallengeTodo(challengeId)
+      }
+    )
+
+    // Message pattern: db:delete-todo
+    targetIpc.handle(
+      CODE_TEST_CHANNELS.DELETE_TODO,
+      async (_event: IpcMainInvokeEvent, id: number) => {
+        return this.codeTestService.deleteTodo(id)
+      }
+    )
+
+    // Message pattern: db:clear-completed-todos
+    targetIpc.handle(CODE_TEST_CHANNELS.CLEAR_COMPLETED_TODOS, async () => {
+      return this.codeTestService.clearCompletedTodos()
+    })
+
+    // Message pattern: db:get-profile
+    targetIpc.handle(CODE_TEST_CHANNELS.GET_PROFILE, async () => {
+      return this.codeTestService.getProfile()
+    })
+
+    // Message pattern: db:save-profile
+    targetIpc.handle(
+      CODE_TEST_CHANNELS.SAVE_PROFILE,
+      async (
+        _event: IpcMainInvokeEvent,
+        dto: { displayName: string; username?: string; bio?: string; avatarId: string }
+      ) => {
+        return this.codeTestService.saveProfile(dto)
+      }
+    )
   }
 
   /**
@@ -193,6 +260,14 @@ export class CodeTestController implements ICodeTestController {
       targetIpc.removeHandler(CODE_TEST_CHANNELS.TOGGLE_FAVORITE)
       targetIpc.removeHandler(CODE_TEST_CHANNELS.GET_FACTORY_CONVERSATIONS)
       targetIpc.removeHandler(CODE_TEST_CHANNELS.SAVE_FACTORY_CONVERSATION)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.GET_TODOS)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.CREATE_TODO)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.TOGGLE_TODO)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.TOGGLE_CHALLENGE_TODO)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.DELETE_TODO)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.CLEAR_COMPLETED_TODOS)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.GET_PROFILE)
+      targetIpc.removeHandler(CODE_TEST_CHANNELS.SAVE_PROFILE)
     } catch {
       // Ignored if handlers were not previously registered
     } finally {

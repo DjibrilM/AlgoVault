@@ -176,49 +176,51 @@ export function ModelPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         initialFocus={searchInputRef}
-        className="w-[min(92vw,760px)] sm:max-w-[760px] h-[min(82vh,580px)] flex flex-col gap-0 p-0 overflow-hidden bg-[#1A1A1A] border border-white/[0.08] text-[#E5E5E5] shadow-2xl"
+        className="w-[min(92vw,760px)] sm:max-w-[760px] h-[min(82vh,580px)] flex flex-col gap-0 p-0 overflow-hidden bg-[#1A1A1A] border-0 ring-0 text-[#E5E5E5] shadow-[0_28px_90px_rgba(0,0,0,0.85)]"
       >
         <DialogHeader className="px-5 pt-4 pb-3 border-b border-white/[0.06] shrink-0 gap-1 pr-12">
           <DialogTitle className="text-sm font-semibold text-white">
-            Model &amp; Provider
+            Gemini Models
           </DialogTitle>
           <DialogDescription className="text-xs text-[#8C8C8C]">
-            Switch your AI connection provider or pick an active language model.
+            Pick an active Google Gemini model for your AI agents.
           </DialogDescription>
         </DialogHeader>
 
         {/* Connection Provider Selector + Search */}
         <div className="px-5 py-3 border-b border-white/[0.06] bg-[#161616] space-y-2.5 shrink-0">
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Backend provider">
-            {AI_PROVIDER_ORDER.map((providerId) => {
-              const isSelected = browsedProvider === providerId
-              const isActive = activeProvider === providerId
-              return (
-                <button
-                  key={providerId}
-                  type="button"
-                  onClick={() => handleBackendChange(providerId)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer',
-                    isSelected
-                      ? 'border-white/25 bg-white/[0.1] text-white'
-                      : 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.06] text-[#9A9A9A] hover:text-white'
-                  )}
-                >
-                  {isActive && (
-                    <span
-                      className={cn(
-                        'size-1.5 rounded-full shrink-0',
-                        isConfigured ? 'bg-emerald-400' : 'bg-[#737373]'
-                      )}
-                      title={isConfigured ? 'Active & configured' : 'Current provider'}
-                    />
-                  )}
-                  <span>{SHORT_PROVIDER_LABELS[providerId]}</span>
-                </button>
-              )
-            })}
-          </div>
+          {AI_PROVIDER_ORDER.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Backend provider">
+              {AI_PROVIDER_ORDER.map((providerId) => {
+                const isSelected = browsedProvider === providerId
+                const isActive = activeProvider === providerId
+                return (
+                  <button
+                    key={providerId}
+                    type="button"
+                    onClick={() => handleBackendChange(providerId)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+                      isSelected
+                        ? 'border-white/25 bg-white/[0.1] text-white'
+                        : 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.06] text-[#9A9A9A] hover:text-white'
+                    )}
+                  >
+                    {isActive && (
+                      <span
+                        className={cn(
+                          'size-1.5 rounded-full shrink-0',
+                          isConfigured ? 'bg-emerald-400' : 'bg-[#737373]'
+                        )}
+                        title={isConfigured ? 'Active & configured' : 'Current provider'}
+                      />
+                    )}
+                    <span>{SHORT_PROVIDER_LABELS[providerId]}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           <div className="relative flex items-center">
             <Search className="pointer-events-none absolute left-3 size-3.5 text-[#737373]" />
@@ -227,7 +229,7 @@ export function ModelPickerDialog({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Search ${browsedModels.length > 0 ? `${browsedModels.length} ` : ''}${SHORT_PROVIDER_LABELS[browsedProvider]} models by name or ID...`}
+              placeholder={`Search ${browsedModels.length > 0 ? `${browsedModels.length} ` : ''}Gemini models by name or ID...`}
               aria-label="Search models"
               className="w-full h-9 rounded-lg border border-white/[0.08] bg-[#121212] pl-9 pr-8 text-xs text-white placeholder:text-[#525252] outline-none focus:border-white/25 transition-colors"
             />
@@ -408,7 +410,7 @@ export function ModelPickerDialog({
                 className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-[#D4D4D4] hover:text-white transition-colors cursor-pointer"
               >
                 <Settings2 className="size-3.5 text-[#8C8C8C]" />
-                <span>Provider &amp; API Key Settings</span>
+                <span>API Keys</span>
               </button>
             )}
             <DialogClose

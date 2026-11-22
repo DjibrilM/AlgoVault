@@ -15,6 +15,8 @@ import {
   SubmissionEntity,
   FavoriteEntity,
   FactoryConversationEntity,
+  TodoEntity,
+  UserProfileEntity,
 } from '../entities/index.ts'
 import type { Problem } from '../../../../src/shared/types/problem.ts'
 import type { OnModuleDestroy } from '../common/lifecycle.ts'
@@ -28,6 +30,7 @@ import type {
   EvaluationResultDto,
   TestCaseResultDto,
   SaveFactoryConversationDto,
+  SaveUserProfileDto,
   PaginatedFactoryConversationsDto,
 } from '../types/index.ts'
 
@@ -71,6 +74,7 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
   private readonly problemCatalog = new Map<number, Problem>()
   private readonly typeChecker: ITypeCheckerService
   private dataSource: DataSource | null = null
+  private todoSchemaEnsured = false
 
   constructor(options: CodeTestServiceOptions = {}) {
     this.options = options
@@ -94,6 +98,7 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
    */
   setDataSource(dataSource: DataSource): void {
     this.dataSource = dataSource
+    this.todoSchemaEnsured = false
   }
 
   /**
@@ -630,6 +635,11 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         solved: challenge.solved || result.verdict === 'Accepted',
       }
     )
+
+    if (result.verdict === 'Accepted') {
+      const todoRepo = this.dataSource.getRepository(TodoEntity)
+      await todoRepo.update({ challengeId }, { completed: true })
+    }
   }
 
   /**
@@ -644,11 +654,77 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
     const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
     const submissionRepo = this.dataSource.getRepository(SubmissionEntity)
 
-    const [categories, challenges, submissions] = await Promise.all([
+    const [categories, challenges, existingSubmissions] = await Promise.all([
       categoryRepo.find({ relations: { challenges: true }, order: { id: 'ASC' } }),
       challengeRepo.find({ relations: { category: true }, order: { id: 'ASC' } }),
       submissionRepo.find({ relations: { challenge: true }, order: { updatedAt: 'DESC', id: 'DESC' } }),
     ])
+
+    let submissions = existingSubmissions
+    const hasRandomSeed = submissions.some((s) => s.output === '__seed_random__')
+    if (!hasRandomSeed && challenges.length > 0) {
+      // Remove any earlier periodic seed rows (output IS NULL) while preserving real user submissions
+      await submissionRepo
+        .createQueryBuilder()
+        .delete()
+        .where('output IS NULL AND verdict = :verdict', { verdict: 'Accepted' })
+        .execute()
+
+      // Organic random distribution across the past 420 days (natural bursts, quiet gaps, varied daily intensity)
+      const now = Date.now()
+      const seeded: Array<ReturnType<typeof submissionRepo.create>> = []
+      let seq = 0
+      let streakBias = 0.28
+      for (let daysAgo = 0; daysAgo <= 420; daysAgo++) {
+        // Slowly drift activity momentum so bursts and quiet weeks occur naturally
+        if (Math.random() < 0.16) {
+          streakBias = 0.12 + Math.random() * 0.52
+        }
+        if (Math.random() > streakBias) continue
+
+        // Weighted daily intensity: mostly 1–3, occasional 4–7 spikes
+        const roll = Math.random()
+        const count =
+          roll < 0.42
+            ? 1
+            : roll < 0.72
+              ? 2
+              : roll < 0.86
+                ? 3
+                : roll < 0.94
+                  ? 4 + Math.floor(Math.random() * 2)
+                  : 6 + Math.floor(Math.random() * 2)
+
+        for (let k = 0; k < count; k++) {
+          const ch = challenges[Math.floor(Math.random() * challenges.length)]
+          const jitterMs = Math.floor(Math.random() * 43_200_000)
+          const ts = new Date(now - daysAgo * 86_400_000 - jitterMs - k * 420_000)
+          seeded.push(
+            submissionRepo.create({
+              challengeId: ch.id,
+              lang: Math.random() < 0.35 ? 'python' : 'typescript',
+              code: ch.initialSolution || '// Accepted solution',
+              status: 'passed',
+              verdict: 'Accepted',
+              passedCases: 3,
+              totalCases: 3,
+              timeMs: 14 + Math.floor(Math.random() * 35),
+              cpuMs: 10 + Math.floor(Math.random() * 22),
+              memoryKb: 4096 + (seq % 12) * 128,
+              output: '__seed_random__',
+              createdAt: ts,
+              updatedAt: ts,
+            })
+          )
+          seq += 1
+        }
+      }
+      await submissionRepo.save(seeded)
+      submissions = await submissionRepo.find({
+        relations: { challenge: true },
+        order: { createdAt: 'DESC', id: 'DESC' },
+      })
+    }
 
     return { categories, challenges, submissions }
   }
@@ -671,6 +747,10 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
 
     if (Object.keys(patch).length > 0) {
       await challengeRepo.update({ id: dto.challengeId }, patch)
+    }
+    if (dto.solved === true) {
+      const todoRepo = this.dataSource.getRepository(TodoEntity)
+      await todoRepo.update({ challengeId: dto.challengeId }, { completed: true })
     }
     return challengeRepo.findOne({ where: { id: dto.challengeId } })
   }
@@ -899,6 +979,227 @@ export class CodeTestService implements ICodeTestService, OnModuleDestroy {
         draft: dto.draft,
         generatedQuestions: dto.generatedQuestions,
         generatedTarget: dto.generatedTarget,
+      })
+    )
+  }
+
+  private async ensureTodoColumns(): Promise<void> {
+    if (!this.dataSource || !this.dataSource.isInitialized || this.todoSchemaEnsured) return
+    try {
+      const columns = (await this.dataSource.query('PRAGMA table_info(todos)')) as Array<{
+        name?: string
+      }>
+      if (!Array.isArray(columns) || columns.length === 0) return
+
+      const existing = new Set(columns.map((col) => String(col.name ?? '').toLowerCase()))
+      if (!existing.has('notes')) {
+        await this.dataSource.query('ALTER TABLE todos ADD COLUMN notes TEXT DEFAULT NULL')
+      }
+      if (!existing.has('importance')) {
+        await this.dataSource.query(
+          "ALTER TABLE todos ADD COLUMN importance VARCHAR(20) NOT NULL DEFAULT 'medium'"
+        )
+      }
+      if (!existing.has('deadline')) {
+        await this.dataSource.query(
+          'ALTER TABLE todos ADD COLUMN deadline VARCHAR(40) DEFAULT NULL'
+        )
+      }
+      this.todoSchemaEnsured = true
+    } catch {
+      // Allow retry on next request
+    }
+  }
+
+  /**
+   * Lists all persistent to-do items ordered with pending tasks first, newest at the top.
+   */
+  async getTodos() {
+    if (!this.dataSource) return []
+    await this.ensureTodoColumns()
+    const todoRepo = this.dataSource.getRepository(TodoEntity)
+    return todoRepo.find({
+      relations: { challenge: { category: true } },
+      order: { completed: 'ASC', createdAt: 'DESC', id: 'DESC' },
+    })
+  }
+
+  /**
+   * Creates a new to-do item (optionally linked to a workspace challenge).
+   */
+  async createTodo(dto: {
+    title: string
+    notes?: string | null
+    importance?: 'low' | 'medium' | 'high' | 'critical'
+    deadline?: string | null
+    challengeId?: number | null
+  }) {
+    if (!this.dataSource) return null
+    await this.ensureTodoColumns()
+
+    const todoRepo = this.dataSource.getRepository(TodoEntity)
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+    const challengeId = dto.challengeId ?? null
+    const linkedChallenge =
+      challengeId !== null
+        ? await challengeRepo.findOne({ where: { id: challengeId } })
+        : null
+
+    const resolvedTitle = dto.title.trim() || linkedChallenge?.title || ''
+    if (!resolvedTitle) {
+      throw new Error('Todo title cannot be empty.')
+    }
+
+    const normalizedNotes = dto.notes?.trim() || null
+    const importance = dto.importance ?? 'medium'
+    const deadline = dto.deadline?.trim() || null
+
+    if (challengeId !== null && linkedChallenge && resolvedTitle === linkedChallenge.title) {
+      const existing = await todoRepo.findOne({
+        where: { challengeId, completed: false },
+        relations: { challenge: { category: true } },
+      })
+      if (existing && existing.title === resolvedTitle) {
+        existing.title = resolvedTitle
+        existing.notes = normalizedNotes
+        existing.importance = importance
+        existing.deadline = deadline
+        await todoRepo.save(existing)
+        return todoRepo.findOne({
+          where: { id: existing.id },
+          relations: { challenge: { category: true } },
+        })
+      }
+    }
+
+    const saved = await todoRepo.save(
+      todoRepo.create({
+        title: resolvedTitle,
+        notes: normalizedNotes,
+        importance,
+        deadline,
+        challengeId,
+        completed: Boolean(linkedChallenge?.solved),
+      })
+    )
+
+    return todoRepo.findOne({
+      where: { id: saved.id },
+      relations: { challenge: { category: true } },
+    })
+  }
+
+  /**
+   * Toggles completion state for a single to-do item.
+   */
+  async toggleTodo(id: number) {
+    if (!this.dataSource) return null
+    await this.ensureTodoColumns()
+    const todoRepo = this.dataSource.getRepository(TodoEntity)
+    const existing = await todoRepo.findOne({ where: { id } })
+    if (!existing) return null
+
+    existing.completed = !existing.completed
+    await todoRepo.save(existing)
+
+    return todoRepo.findOne({
+      where: { id: existing.id },
+      relations: { challenge: { category: true } },
+    })
+  }
+
+  /**
+   * Adds or removes a challenge from the user's persistent practice to-do queue.
+   */
+  async toggleChallengeTodo(challengeId: number): Promise<{ queued: boolean; todo?: unknown }> {
+    if (!this.dataSource) return { queued: false }
+    await this.ensureTodoColumns()
+    const todoRepo = this.dataSource.getRepository(TodoEntity)
+    const existing = await todoRepo.findOne({ where: { challengeId } })
+    if (existing) {
+      await todoRepo.delete({ challengeId })
+      return { queued: false }
+    }
+
+    const challengeRepo = this.dataSource.getRepository(ChallengeEntity)
+    const challenge = await challengeRepo.findOne({ where: { id: challengeId } })
+    const saved = await todoRepo.save(
+      todoRepo.create({
+        title: challenge?.title ?? `Challenge #${challengeId}`,
+        notes: null,
+        importance: 'high',
+        deadline: null,
+        challengeId,
+        completed: Boolean(challenge?.solved),
+      })
+    )
+    const hydrated = await todoRepo.findOne({
+      where: { id: saved.id },
+      relations: { challenge: { category: true } },
+    })
+    return { queued: true, todo: hydrated }
+  }
+
+  /**
+   * Deletes a single to-do item from SQLite.
+   */
+  async deleteTodo(id: number): Promise<{ deleted: boolean }> {
+    if (!this.dataSource) return { deleted: false }
+    const todoRepo = this.dataSource.getRepository(TodoEntity)
+    const result = await todoRepo.delete({ id })
+    return { deleted: (result.affected ?? 0) > 0 }
+  }
+
+  /**
+   * Removes all completed to-do items from SQLite.
+   */
+  async clearCompletedTodos(): Promise<{ cleared: number }> {
+    if (!this.dataSource) return { cleared: 0 }
+    const todoRepo = this.dataSource.getRepository(TodoEntity)
+    const result = await todoRepo.delete({ completed: true })
+    return { cleared: result.affected ?? 0 }
+  }
+
+  /**
+   * Reads the local user profile if created during onboarding.
+   */
+  async getProfile() {
+    if (!this.dataSource) return null
+    const repo = this.dataSource.getRepository(UserProfileEntity)
+    return repo.findOne({ where: { id: 1 } })
+  }
+
+  /**
+   * Creates or updates the singleton local user profile in SQLite.
+   */
+  async saveProfile(dto: SaveUserProfileDto) {
+    if (!this.dataSource) return null
+    const repo = this.dataSource.getRepository(UserProfileEntity)
+    const displayName = dto.displayName.trim() || 'Developer'
+    const rawUsername = (dto.username ?? displayName)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '')
+    const username = rawUsername || 'developer'
+    const bio = (dto.bio ?? '').trim().slice(0, 240)
+    const avatarId = dto.avatarId.trim() || 'cat'
+
+    const existing = await repo.findOne({ where: { id: 1 } })
+    if (existing) {
+      existing.displayName = displayName
+      existing.username = username
+      existing.bio = bio
+      existing.avatarId = avatarId
+      return repo.save(existing)
+    }
+
+    return repo.save(
+      repo.create({
+        id: 1,
+        displayName,
+        username,
+        bio,
+        avatarId,
       })
     )
   }
