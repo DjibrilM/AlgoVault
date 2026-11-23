@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="560" viewBox="0 0 1440 560" fill="none">
+  <defs>
+    <style>
+      .headline {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 900;
+        font-style: italic;
+        font-size: 52px;
+        letter-spacing: -1px;
+      }
+      .body-text {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 700;
+        font-style: italic;
+        font-size: 32px;
+        letter-spacing: -0.3px;
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(0, 10)">
+    <!-- Outer Black + Mint Border of Speech Bubble (Bottom-Center Tail) -->
+    <path
+      d="M 150 108
+         L 1192 108
+         C 1298 110, 1358 170, 1368 264
+         C 1378 358, 1326 426, 1192 432
+         L 786 432
+         L 720 526
+         L 658 432
+         L 150 432
+         C 66 432, 22 376, 28 278
+         C 34 180, 66 112, 150 108 Z"
+      fill="#00F5B8"
+      stroke="#0A0A0A"
+      stroke-width="16"
+      stroke-linejoin="round"
+    />
+
+    <!-- Inner White Speech Bubble (Bottom-Center Tail) -->
+    <path
+      d="M 160 126
+         L 1182 126
+         C 1278 128, 1328 180, 1338 264
+         C 1346 346, 1300 408, 1182 412
+         L 774 412
+         L 720 492
+         L 670 412
+         L 160 412
+         C 84 412, 48 362, 54 278
+         C 60 194, 84 130, 160 126 Z"
+      fill="#FFFFFF"
+      stroke="#0A0A0A"
+      stroke-width="10"
+      stroke-linejoin="round"
+    />
+
+    <!-- Bottom-Right Comic Accent Triangles -->
+    <g stroke="#0A0A0A" stroke-width="7" stroke-linejoin="round" fill="#00F5B8">
+      <polygon points="1312,402 1388,380 1396,420" />
+      <polygon points="1294,432 1370,440 1352,478" />
+      <polygon points="1264,442 1296,480 1252,490" />
+    </g>
+
+    <!-- Cartoon Share Badge at Top-Right -->
+    <g transform="translate(1236, 44)">
+      <g fill="#FFD426" stroke="#0A0A0A" stroke-width="6" stroke-linejoin="round">
+        <polygon points="74,-26 86,-26 82,-4 76,-4" />
+        <polygon points="122,-16 134,-6 116,12 106,2" />
+      </g>
+      <rect
+        x="16"
+        y="14"
+        width="124"
+        height="124"
+        rx="28"
+        fill="#FFD426"
+        stroke="#0A0A0A"
+        stroke-width="8"
+      />
+      <line x1="56" y1="76" x2="98" y2="52" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" />
+      <line x1="56" y1="76" x2="98" y2="100" stroke="#0A0A0A" stroke-width="10" stroke-linecap="round" />
+      <circle cx="52" cy="76" r="15" fill="#19A8FF" stroke="#0A0A0A" stroke-width="7" />
+      <circle cx="102" cy="50" r="15" fill="#00F5B8" stroke="#0A0A0A" stroke-width="7" />
+      <circle cx="102" cy="102" r="15" fill="#BA68FF" stroke="#0A0A0A" stroke-width="7" />
+    </g>
+
+    <!-- Headline -->
+    <text x="190" y="214" fill="#0A0A0A" class="headline">Share Your</text>
+    <rect x="498" y="156" width="560" height="74" rx="37" fill="#00F5B8" />
+    <text x="778" y="212" text-anchor="middle" fill="#0A0A0A" class="headline">AlgoVault Progress</text>
+
+    <!-- Explanatory Copy -->
+    <text x="684" y="290" text-anchor="middle" fill="#0A0A0A" class="body-text">
+      Export a crisp profile card with your avatar, solved stats, streaks,
+    </text>
+    <text x="684" y="344" text-anchor="middle" fill="#0A0A0A" class="body-text">
+      and contribution heatmap—ready to copy or post on social media.
+    </text>
+  </g>
+</svg>
