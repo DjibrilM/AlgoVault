@@ -7,4 +7,6 @@ interface Window {
     send(channel: string, ...args: any[]): void
     invoke<T = any>(channel: string, ...args: any[]): Promise<T>
   }
+  appMenu?: import('./shared/types/appMenu').AppMenuBridge
+  aiClient?: import('./shared/types/ai').AiBridge
 }

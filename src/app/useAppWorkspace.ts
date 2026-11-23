@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { NavSection } from '@layout'
-import { useKeyboardShortcut } from '@shared'
+import { type AppMenuAction, useAppMenuAction, useKeyboardShortcut } from '@shared'
 import { useWorkspaceQuery } from '@/shared/hooks/useWorkspaceQueries'
 import {
   activeNavAtom,
@@ -18,6 +18,10 @@ import {
   activeProblemsAtom,
   selectedProblemIdAtom,
   isSidebarOpenAtom,
+  canGoBackAtom,
+  canGoForwardAtom,
+  goBackAtom,
+  goForwardAtom,
   toggleSidebarAtom,
   solveProblemAtom,
   selectCategoryAtom,
@@ -47,7 +51,11 @@ export function useAppWorkspace() {
   const activeProblems = useAtomValue(activeProblemsAtom)
   const [selectedProblemId, setSelectedProblemId] = useAtom(selectedProblemIdAtom)
   const [isSidebarOpen, setIsSidebarOpen] = useAtom(isSidebarOpenAtom)
+  const canGoBack = useAtomValue(canGoBackAtom)
+  const canGoForward = useAtomValue(canGoForwardAtom)
 
+  const goBackAction = useSetAtom(goBackAtom)
+  const goForwardAction = useSetAtom(goForwardAtom)
   const toggleSidebarAction = useSetAtom(toggleSidebarAtom)
   const solveProblem = useSetAtom(solveProblemAtom)
   const selectCategory = useSetAtom(selectCategoryAtom)
@@ -91,7 +99,41 @@ export function useAppWorkspace() {
     toggleSidebarAction()
   }, [toggleSidebarAction])
 
-  useKeyboardShortcut('b', toggleSidebar)
+  const hasNativeMenu = typeof window !== 'undefined' && Boolean(window.appMenu)
+  useKeyboardShortcut('b', toggleSidebar, !hasNativeMenu)
+
+  const isChallengeActive = activeNav === 'home' && Boolean(activeCategory) && isSolvingChallenge
+  const activeProblemIndex = activeProblems.findIndex((p) => p.id === selectedProblemId)
+  const canPrevChallenge = isChallengeActive && activeProblemIndex > 0
+  const canNextChallenge =
+    isChallengeActive && activeProblemIndex !== -1 && activeProblemIndex < activeProblems.length - 1
+
+  useEffect(() => {
+    window.appMenu?.syncState({
+      canGoBack,
+      canGoForward,
+      isSolvingChallenge: isChallengeActive,
+      canPrevChallenge,
+      canNextChallenge,
+      ...(isChallengeActive ? {} : { isRunning: false }),
+    })
+  }, [canGoBack, canGoForward, isChallengeActive, canPrevChallenge, canNextChallenge])
+
+  useAppMenuAction((action) => {
+    const handlers: Partial<Record<AppMenuAction, () => void>> = {
+      'nav-home': () => navigateSectionAction('home'),
+      'open-questions-factory': openAiStudioAction,
+      'new-questions-studio': openAiStudioAction,
+      'open-marathons': viewAllMarathonsAction,
+      'nav-favorites': () => navigateSectionAction('favorites'),
+      'nav-todos': () => navigateSectionAction('todos'),
+      'open-settings': () => navigateSectionAction('settings'),
+      'nav-back': goBackAction,
+      'nav-forward': goForwardAction,
+      'toggle-sidebar': toggleSidebarAction,
+    }
+    handlers[action]?.()
+  })
 
   const handleSolveProblem = (problemId: number) => {
     solveProblem(problemId)

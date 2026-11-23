@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-export type NavSection = 'home' | 'settings' | 'favorites' | 'todos'
+export type NavSection = 'home' | 'settings' | 'favorites' | 'todos' | 'profile'
 
 export interface NavRailItem {
   id: NavSection

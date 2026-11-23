@@ -51,13 +51,29 @@ export interface ChallengeSidebarProps {
   isMarathon?: boolean
 }
 
+export interface SolutionFeedbackState {
+  problemId: number
+  lang: SupportedLang
+  codeSignature: string
+  text: string
+  reasoning?: string
+  isStreaming: boolean
+  cached?: boolean
+  error?: string
+  verdict?: string
+}
+
 export interface ProblemDescriptionProps {
   problem?: Problem
   headerActions?: ReactNode
   isStreaming?: boolean
+  currentCode?: string
+  selectedLang?: SupportedLang
 }
 
 export interface TestCaseRunnerProps {
   problem?: Problem
   runResult?: RunResult
+  solutionFeedback?: SolutionFeedbackState | null
+  onRequestFeedbackRetry?: () => void
 }

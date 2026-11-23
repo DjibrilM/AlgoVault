@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import '../services/monacoSetup'
 import { LANGUAGES } from '../components/LanguageIcons'
+import type { Problem } from '@/shared/types/problem'
 import { CodeEditorProps, SupportedLang } from '../types'
 import { abstractUserFacingCode, containsLegacyIO } from '../utils/codeAbstractor'
 import {
@@ -49,6 +50,34 @@ export {
   DropdownMenuSubTrigger,
 }
 
+function isAnyStarterTemplate(problem: Problem, candidate: string): boolean {
+  const trimmed = candidate.trim()
+  if (!trimmed) return true
+  const langs: SupportedLang[] = ['typescript', 'javascript', 'python', 'cpp']
+  return langs.some((lang) => {
+    const raw = (problem.codeTemplates[lang] || '').trim()
+    const abstracted = abstractUserFacingCode(problem.codeTemplates[lang] || '', lang).trim()
+    return trimmed === raw || trimmed === abstracted
+  })
+}
+
+function isSolutionCompatibleWithLang(source: string, lang: SupportedLang): boolean {
+  if (lang === 'python') {
+    return /\bdef\s+[A-Za-z_]\w*\s*\(/.test(source) && !/\bfunction\s+[A-Za-z_]/.test(source)
+  }
+  if (lang === 'javascript') {
+    return (
+      !/\)\s*:\s*[A-Za-z_${[]/.test(source) &&
+      !/\b[A-Za-z_]\w*\s*:\s*(number|string|boolean|any|unknown|void|null|undefined|Record|Array)\b/.test(source) &&
+      !/\bdef\s+[A-Za-z_]\w*\s*\(/.test(source)
+    )
+  }
+  if (lang === 'cpp') {
+    return !/\bfunction\s+[A-Za-z_]/.test(source) && !/\bdef\s+[A-Za-z_]\w*\s*\(/.test(source)
+  }
+  return !/\bdef\s+[A-Za-z_]\w*\s*\(/.test(source)
+}
+
 export function CodeEditor({
   problem: propProblem,
   code: propCode,
@@ -67,6 +96,7 @@ export function CodeEditor({
   const setProblems = useSetAtom(problemsAtom)
   const saveProgressMutation = useSaveChallengeProgressMutation()
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const userDraftsRef = useRef<Map<string, string>>(new Map())
 
   const problem = propProblem ?? globalProblem
   const code = propCode ?? globalCode
@@ -78,12 +108,21 @@ export function CodeEditor({
 
   const [copied, setCopied] = useState(false)
 
-  // When problem or language changes, load saved user solution (if any) or starter template
+  // When problem or language changes, load per-language draft, compatible saved solution, or starter template
   useEffect(() => {
+    const draftKey = `${problem.id}:${selectedLang}`
+    const localDraft = userDraftsRef.current.get(draftKey)
+    const savedSolution = problem.solution?.trim()
+      ? problem.solution
+      : undefined
+    const canUseSavedSolution =
+      Boolean(savedSolution) &&
+      !isAnyStarterTemplate(problem, savedSolution!) &&
+      isSolutionCompatibleWithLang(savedSolution!, selectedLang)
+
     const initialSource =
-      problem.solution && problem.solution.trim().length > 0
-        ? problem.solution
-        : problem.codeTemplates[selectedLang] || ''
+      localDraft ??
+      (canUseSavedSolution ? savedSolution! : problem.codeTemplates[selectedLang] || '')
     const nextCode = abstractUserFacingCode(initialSource, selectedLang)
     if (nextCode !== code) {
       onChangeCode(nextCode)
@@ -91,24 +130,28 @@ export function CodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [problem.id, problem.codeTemplates, selectedLang, onChangeCode])
 
-  // Debounce-save code edits into SQLite & local problemsAtom
-  useEffect(() => {
+  const schedulePersistSolution = (nextCode: string) => {
     if (!problem.id) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (isAnyStarterTemplate(problem, nextCode)) return
+
+    const targetProblemId = problem.id
     saveTimerRef.current = setTimeout(() => {
       setProblems((prev) =>
-        prev.map((p) => (p.id === problem.id ? { ...p, solution: code } : p))
+        prev.map((p) => (p.id === targetProblemId ? { ...p, solution: nextCode } : p))
       )
       saveProgressMutation.mutate({
-        challengeId: problem.id,
-        solution: code,
+        challengeId: targetProblemId,
+        solution: nextCode,
       })
     }, 500)
+  }
 
+  useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [code, problem.id, setProblems, saveProgressMutation.mutate])
+  }, [])
 
   // Abstract legacy boilerplate at the rendering level before reaching the editor UI
   useEffect(() => {
@@ -122,7 +165,9 @@ export function CodeEditor({
 
   const handleReset = () => {
     const template = problem.codeTemplates[selectedLang] || ''
-    onChangeCode(abstractUserFacingCode(template, selectedLang))
+    const resetCode = abstractUserFacingCode(template, selectedLang)
+    userDraftsRef.current.delete(`${problem.id}:${selectedLang}`)
+    onChangeCode(resetCode)
   }
 
   const handleCopy = async () => {
@@ -261,7 +306,12 @@ export function CodeEditor({
           language={selectedLang}
           theme="vs-dark"
           value={abstractUserFacingCode(code, selectedLang)}
-          onChange={(value) => onChangeCode(value ?? '')}
+          onChange={(value) => {
+            const nextValue = value ?? ''
+            userDraftsRef.current.set(`${problem.id}:${selectedLang}`, nextValue)
+            onChangeCode(nextValue)
+            schedulePersistSolution(nextValue)
+          }}
           onMount={(editorInstance, monacoInstance) => {
             if (onRun) {
               editorInstance.addCommand(

@@ -1,8 +1,10 @@
+import { useRef } from 'react'
 import { ConversationHistoryDrawer } from '../components/ConversationHistoryDrawer'
 import { FactoryComposer } from '../components/FactoryComposer'
 import { FactoryConversation } from '../components/FactoryConversation'
 import { FactoryHeader } from '../components/FactoryHeader'
 import { GenerationDraftPanel } from '../components/GenerationDraftPanel'
+import { GenerationFocusOrbStage } from '../components/GenerationFocusOrbStage'
 import { useQuestionsFactory } from '../hooks/useQuestionsFactory'
 
 interface QuestionsFactoryScreenProps {
@@ -14,6 +16,7 @@ interface QuestionsFactoryScreenProps {
  * with a live specification panel and infinite-scroll conversation history.
  */
 export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenProps) {
+  const orbSlotRef = useRef<HTMLDivElement>(null)
   const {
     activeConversationId,
     messages,
@@ -24,8 +27,15 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
     draft,
     highlightedFields,
     isGenerating,
+    generationOverlayPhase,
+    generationProcessStatus,
+    isOutputRevealed,
+    isRetryPromptVisible,
+    retryImpulseSeq,
+    retryGeneration,
+    cancelGenerationRetry,
+    completeOrbReturn,
     generatedQuestions,
-    isSimulating,
     liked,
     disliked,
     effectiveOrbState,
@@ -41,27 +51,31 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
     resumeConversation,
     startNewConversation,
     handleSubmit,
-    handleFileChange,
+    retryFailedMessage,
+    handleFileChange ,
     removeAttachment,
     handleToggleLike,
     handleToggleDislike,
     handleCopy,
     openWorkspace,
-    runSimulation,
-    stopSimulation,
     stopAiActivity,
+    aiStatus,
+    availableModels,
+    isModelsLoading,
+    activeProvider,
+    activeModelId,
+    switchModel,
+    isSwitchingModel,
+    openAiSettings,
   } = useQuestionsFactory()
 
   return (
     <div className="h-full flex flex-col bg-[#1A1A1A] text-[#E5E5E5] select-none">
       <FactoryHeader
-        amplitude={amplitude}
         isHistoryOpen={isHistoryOpen}
-        isSimulating={isSimulating}
         onBackToHome={onBackToHome}
         onToggleHistory={toggleHistory}
-        onToggleSimulation={() => (isSimulating ? stopSimulation() : void runSimulation())}
-        orbState={effectiveOrbState}
+        orbSlotRef={orbSlotRef}
       />
 
       <div className="relative flex-1 flex min-h-0 overflow-hidden">
@@ -71,15 +85,26 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
             liked={liked}
             messages={messages}
             onCopy={handleCopy}
+            onOpenSettings={openAiSettings}
+            onRetryMessage={(id) => void retryFailedMessage(id)}
             onToggleDislike={handleToggleDislike}
             onToggleLike={handleToggleLike}
           />
 
           <FactoryComposer
+            activeBaseUrl={aiStatus?.baseUrl}
+            activeModelId={activeModelId}
+            activeProvider={activeProvider}
             attachments={attachments}
+            availableModels={availableModels}
             fileInputRef={fileInputRef}
+            isAiConfigured={Boolean(aiStatus?.configured)}
+            isModelsLoading={isModelsLoading}
+            isSwitchingModel={isSwitchingModel}
             onFileChange={handleFileChange}
+            onOpenSettings={openAiSettings}
             onRemoveAttachment={removeAttachment}
+            onSelectModel={(modelId, provider) => void switchModel(modelId, provider)}
             onStop={stopAiActivity}
             onSubmit={(val) => void handleSubmit(val)}
             onValueChange={setPromptText}
@@ -93,6 +118,7 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
           generatedQuestions={generatedQuestions}
           highlightedFields={highlightedFields}
           isGenerating={isGenerating}
+          isOutputRevealed={isOutputRevealed}
           onOpenWorkspace={openWorkspace}
         />
 
@@ -109,6 +135,19 @@ export function QuestionsFactoryScreen({ onBackToHome }: QuestionsFactoryScreenP
           onSelectConversation={resumeConversation}
         />
       </div>
+
+      <GenerationFocusOrbStage
+        amplitude={amplitude}
+        isRetryPromptVisible={isRetryPromptVisible}
+        onCancelRetry={cancelGenerationRetry}
+        onRetry={retryGeneration}
+        onReturnComplete={completeOrbReturn}
+        orbSlotRef={orbSlotRef}
+        orbState={effectiveOrbState}
+        phase={generationOverlayPhase}
+        processStatus={generationProcessStatus}
+        retryImpulseSeq={retryImpulseSeq}
+      />
     </div>
   )
 }

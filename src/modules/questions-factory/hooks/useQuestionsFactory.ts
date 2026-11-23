@@ -1,6 +1,17 @@
 import { type ChangeEvent, useCallback, useRef, useState } from 'react'
+import { useSetAtom } from 'jotai'
 import { type AIState, useSimulatedAmplitude } from '@/components/ui/smoothui/ai-core'
 import type { AIPromptAttachment } from '@/components/ui/smoothui/ai-prompt-input'
+import { useAppMenuAction } from '@/shared'
+import {
+  useAiConfigQuery,
+  useAiModelsQuery,
+  useSaveAiConfigMutation,
+} from '@/shared/hooks/useWorkspaceQueries'
+import { aiClient } from '@/shared/services/aiClient'
+import { activeNavAtom } from '@/shared/store'
+import type { AiAgentRole, AiProviderId } from '@/shared/types/ai'
+import { classifyAiError } from '@/shared/utils/aiError'
 import type {
   FactoryConversationSnapshot,
   GeneratedTarget,
@@ -57,6 +68,48 @@ export function useQuestionsFactory() {
   const [liked, setLiked] = useState<Record<string, boolean>>({})
   const [disliked, setDisliked] = useState<Record<string, boolean>>({})
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const activeAiRunIdRef = useRef<string | null>(null)
+  const setActiveNav = useSetAtom(activeNavAtom)
+  const { data: aiStatus } = useAiConfigQuery()
+  const saveAiConfigMutation = useSaveAiConfigMutation()
+  const [selectedModelOverride, setSelectedModelOverride] = useState<string | null>(null)
+  const [selectedProviderOverride, setSelectedProviderOverride] = useState<AiProviderId | null>(null)
+  const activeProvider: AiProviderId = selectedProviderOverride ?? aiStatus?.provider ?? 'google'
+  const activeModelId = selectedModelOverride ?? aiStatus?.modelId ?? ''
+  const {
+    data: availableModels = [],
+    isLoading: isModelsInitialLoading,
+    isFetching: isModelsFetching,
+  } = useAiModelsQuery(activeProvider, aiStatus?.baseUrl)
+  const isModelsLoading =
+    isModelsInitialLoading || (isModelsFetching && availableModels.length === 0)
+
+  const switchModel = useCallback(
+    async (nextModelId: string, nextProvider?: AiProviderId) => {
+      const trimmed = nextModelId.trim()
+      const targetProvider = nextProvider ?? activeProvider
+      if (!trimmed || (trimmed === activeModelId && targetProvider === activeProvider)) return
+      setSelectedModelOverride(trimmed)
+      setSelectedProviderOverride(targetProvider)
+
+      if (aiClient.isAvailable()) {
+        try {
+          await saveAiConfigMutation.mutateAsync({
+            provider: targetProvider,
+            modelId: trimmed,
+            ...(targetProvider === aiStatus?.provider && aiStatus?.baseUrl !== undefined
+              ? { baseUrl: aiStatus.baseUrl }
+              : {}),
+          })
+          setSelectedModelOverride(null)
+          setSelectedProviderOverride(null)
+        } catch {
+          // Keep in-session override even if saving fails
+        }
+      }
+    },
+    [activeModelId, activeProvider, aiStatus?.baseUrl, aiStatus?.provider, saveAiConfigMutation]
+  )
 
   const {
     isHistoryOpen,
@@ -103,6 +156,23 @@ export function useQuestionsFactory() {
     return next
   }, [])
 
+  const updateMessageById = useCallback(
+    (id: string, updater: (msg: StudioMessage) => StudioMessage): StudioMessage[] => {
+      const next = messagesRef.current.map((msg) => (msg.id === id ? updater(msg) : msg))
+      messagesRef.current = next
+      setMessages(next)
+      return next
+    },
+    []
+  )
+
+  const removeMessageById = useCallback((id: string): StudioMessage[] => {
+    const next = messagesRef.current.filter((msg) => msg.id !== id)
+    messagesRef.current = next
+    setMessages(next)
+    return next
+  }, [])
+
   const markDraftGenerated = useCallback(() => {
     const next = draftRef.current ? { ...draftRef.current, generated: true } : draftRef.current
     draftRef.current = next
@@ -130,8 +200,20 @@ export function useQuestionsFactory() {
   const {
     isGenerating,
     isGeneratingRef,
+    overlayPhase,
+    processStatus,
+    isOutputRevealed,
+    isRetryPromptVisible,
+    retryImpulseSeq,
     generatedQuestions,
     executeGeneration,
+    startAgentGeneration,
+    updateAgentGenerationStage,
+    completeAgentGeneration,
+    failAgentGeneration,
+    retryGeneration,
+    cancelGenerationRetry,
+    completeOrbReturn,
     resetGeneratedOutput,
     restoreGeneratedOutput,
     openWorkspace,
@@ -150,8 +232,296 @@ export function useQuestionsFactory() {
     }, 1400)
   }, [])
 
+  const runLiveAiTurn = useCallback(
+    async (
+      prompt: string,
+      historyForRun: StudioMessage[],
+      initialDraft: GenerationDraft | null,
+      retryOpts?: { retryMessageId?: string; baseRetryCount?: number }
+    ) => {
+      const willForceGenerate = Boolean(
+        initialDraft?.readyToGenerate && !initialDraft.generated && isConfirmationIntent(prompt)
+      )
+
+      const baseDraft = initialDraft?.generated ? null : initialDraft
+      if (initialDraft?.generated) {
+        generatedQuestionsRef.current = []
+        generatedTargetRef.current = null
+        resetGeneratedOutput()
+      }
+
+      let currentDraftForRetry = baseDraft
+      let attempt = retryOpts?.baseRetryCount ?? 0
+      let executorRunId: number | null = null
+      let shouldContinue = true
+      const reuseMessageId = retryOpts?.retryMessageId
+
+      if (willForceGenerate) {
+        executorRunId = startAgentGeneration({
+          stepIndex: 0,
+          totalSteps: 4,
+          label: `Let me prepare your ${baseDraft?.topic ?? 'Custom Practice'}...`,
+          detail: 'Coordinating specialized agents to craft your challenges',
+        })
+      }
+
+      while (shouldContinue) {
+        shouldContinue = false
+        attempt += 1
+        const runId = `ai-run-${Date.now()}-${attempt}`
+        activeAiRunIdRef.current = runId
+        const assistantId = attempt === (retryOpts?.baseRetryCount ?? 0) + 1 && reuseMessageId
+          ? reuseMessageId
+          : `assistant-${Date.now()}`
+
+        if (!executorRunId) {
+          updateAiActivity('thinking')
+        }
+
+        const initialStatus =
+          attempt > 1 ? `Retrying (attempt ${attempt})…` : 'Reviewing your request…'
+
+        if (assistantId === reuseMessageId) {
+          updateMessageById(assistantId, (msg) => ({
+            ...msg,
+            content: '',
+            reasoning: '',
+            isStreaming: true,
+            statusLabel: initialStatus,
+            retryCount: attempt,
+            errorInfo: undefined,
+          }))
+        } else {
+          appendMessage({
+            id: assistantId,
+            from: 'assistant',
+            content: '',
+            reasoning: '',
+            isStreaming: true,
+            statusLabel: initialStatus,
+            ...(attempt > 1 ? { retryCount: attempt } : {}),
+          })
+        }
+
+        const stageStepMap: Partial<Record<AiAgentRole, number>> = {
+          master: 0,
+          'catalog-analyst': 1,
+          'challenge-architect': 2,
+          'starter-code-crafter': 2,
+          'challenge-verifier': 3,
+        }
+
+        const unsubscribe = aiClient.onStreamEvent((event) => {
+          if (event.runId !== runId) return
+
+          if (event.type === 'reasoning-delta') {
+            updateMessageById(assistantId, (msg) => ({
+              ...msg,
+              reasoning: `${msg.reasoning ?? ''}${event.delta}`,
+            }))
+            return
+          }
+
+          if (event.type === 'text-delta') {
+            if (!executorRunId) {
+              updateAiActivity('streaming')
+            }
+            updateMessageById(assistantId, (msg) => ({
+              ...msg,
+              content: `${msg.content}${event.delta}`,
+              statusLabel: undefined,
+            }))
+            return
+          }
+
+          if (event.type === 'draft-updated') {
+            draftRef.current = event.draft
+            currentDraftForRetry = event.draft
+            setDraft(event.draft)
+            flashUpdatedFields(event.updatedFields)
+            return
+          }
+
+          if (event.type === 'agent-stage') {
+            updateMessageById(assistantId, (msg) => ({
+              ...msg,
+              statusLabel: event.label,
+            }))
+
+            const isOrchestratedStage =
+              event.agent === 'catalog-analyst' ||
+              event.agent === 'challenge-architect' ||
+              event.agent === 'challenge-verifier' ||
+              event.toolName === 'saveChallengeSet'
+
+            if (isOrchestratedStage && !executorRunId) {
+              executorRunId = startAgentGeneration({
+                stepIndex: stageStepMap[event.agent] ?? 0,
+                totalSteps: 4,
+                label: event.label,
+                detail: event.detail,
+              })
+            } else if (executorRunId) {
+              const stepIdx =
+                event.toolName === 'saveChallengeSet' ? 3 : (stageStepMap[event.agent] ?? 1)
+              updateAgentGenerationStage(
+                executorRunId,
+                {
+                  stepIndex: stepIdx,
+                  totalSteps: 4,
+                  label: event.label,
+                  detail: event.detail,
+                },
+                event.agent === 'challenge-verifier' || event.toolName === 'saveChallengeSet'
+                  ? 'streaming'
+                  : 'thinking'
+              )
+            }
+            return
+          }
+
+          if (event.type === 'error') {
+            const classified = classifyAiError(event.message)
+            updateMessageById(assistantId, (msg) => ({
+              ...msg,
+              isStreaming: false,
+              statusLabel: undefined,
+              errorInfo: classified,
+            }))
+          }
+        })
+
+        try {
+          const result = await aiClient.runStudioTurn({
+            runId,
+            prompt,
+            messages: historyForRun.map((m) => ({
+              id: m.id,
+              from: m.from,
+              content: m.content,
+              ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+            })),
+            draft: currentDraftForRetry,
+            forceGenerate: willForceGenerate,
+            ...(activeModelId ? { modelId: activeModelId } : {}),
+          })
+
+          if (activeAiRunIdRef.current === runId) {
+            activeAiRunIdRef.current = null
+          }
+
+          if (result.aborted) {
+            removeMessageById(assistantId)
+            updateAiActivity('idle')
+            return
+          }
+
+          const finalMessages = updateMessageById(assistantId, (msg) => ({
+            ...msg,
+            content: result.text || msg.content,
+            reasoning: result.reasoning || msg.reasoning || undefined,
+            isStreaming: false,
+            statusLabel: undefined,
+            errorInfo: undefined,
+          }))
+
+          const nextDraft = result.draft ?? draftRef.current
+          if (nextDraft) {
+            draftRef.current = nextDraft
+            setDraft(nextDraft)
+          }
+          if (result.updatedFields.length > 0) {
+            flashUpdatedFields(result.updatedFields)
+          }
+
+          if (result.generatedQuestions && result.generatedTarget) {
+            const targetRunId =
+              executorRunId ??
+              startAgentGeneration({
+                stepIndex: 3,
+                totalSteps: 4,
+                label: 'Almost there, wiring everything in...',
+                detail: `Preparing ${result.generatedQuestions.length} challenges`,
+              })
+
+            syncSnapshot({
+              messages: finalMessages,
+              draft: nextDraft,
+              generatedQuestions: result.generatedQuestions,
+              generatedTarget: result.generatedTarget,
+            })
+
+            await completeAgentGeneration(targetRunId, {
+              targetDraft: nextDraft,
+              questions: result.generatedQuestions,
+              target: result.generatedTarget,
+              problemIds: result.generatedProblemIds,
+              totalSteps: 4,
+            })
+            return
+          }
+
+          syncSnapshot({ messages: finalMessages, draft: nextDraft })
+          const resetDelay = nextDraft?.readyToGenerate ? 1600 : 750
+          if (nextDraft?.readyToGenerate) {
+            updateAiActivity('done')
+          }
+          setTimeout(() => updateAiActivity('idle'), resetDelay)
+          return
+        } catch (err) {
+          if (activeAiRunIdRef.current === runId) {
+            activeAiRunIdRef.current = null
+          }
+          const errorMessage = err instanceof Error ? err.message : String(err)
+          const classified = classifyAiError(errorMessage)
+
+          if (executorRunId) {
+            const decision = await failAgentGeneration(executorRunId, classified.summary, 4)
+            if (decision === 'retry') {
+              updateMessageById(assistantId, (msg) => ({
+                ...msg,
+                statusLabel: `Retrying (attempt ${attempt + 1})…`,
+                retryCount: attempt + 1,
+                errorInfo: undefined,
+              }))
+              shouldContinue = true
+              continue
+            }
+          }
+
+          updateMessageById(assistantId, (msg) => ({
+            ...msg,
+            isStreaming: false,
+            statusLabel: undefined,
+            retryCount: attempt,
+            errorInfo: classified,
+          }))
+          updateAiActivity('error')
+          setTimeout(() => updateAiActivity('idle'), 2000)
+          return
+        } finally {
+          unsubscribe()
+        }
+      }
+    },
+    [
+      activeModelId,
+      appendMessage,
+      completeAgentGeneration,
+      failAgentGeneration,
+      flashUpdatedFields,
+      removeMessageById,
+      resetGeneratedOutput,
+      startAgentGeneration,
+      syncSnapshot,
+      updateAgentGenerationStage,
+      updateAiActivity,
+      updateMessageById,
+    ]
+  )
+
   const handleSubmit = useCallback(
-    async (rawPrompt: string) => {
+    async (rawPrompt: string, options?: { isSimulation?: boolean }) => {
       const prompt = rawPrompt.trim()
       if (!prompt || aiActivityRef.current === 'thinking' || isGeneratingRef.current) return
 
@@ -167,10 +537,17 @@ export function useQuestionsFactory() {
       })
       syncSnapshot({ messages: afterUser })
 
-      // Trigger generation immediately when draft is complete and user confirms
       const latestDraft = draftRef.current
+
+      // Use real Vercel AI SDK agent pipeline when configured (keep simulation deterministic)
+      if (!options?.isSimulation && aiClient.isAvailable() && aiStatus?.configured) {
+        await runLiveAiTurn(prompt, afterUser, latestDraft)
+        return
+      }
+
+      // Offline / simulation path: execute local draft shaping & generation
       if (latestDraft?.readyToGenerate && !latestDraft.generated && isConfirmationIntent(prompt)) {
-        await executeGeneration(latestDraft)
+        await executeGeneration(latestDraft, { isSimulation: options?.isSimulation })
         return
       }
 
@@ -238,19 +615,21 @@ export function useQuestionsFactory() {
       })
       syncSnapshot({ messages: afterAssistant, draft: nextDraft })
 
-      const resetDelay = nextDraft.readyToGenerate ? 1400 : 650
+      const resetDelay = nextDraft.readyToGenerate ? 1850 : 850
       if (nextDraft.readyToGenerate) {
         updateAiActivity('done')
       }
       setTimeout(() => updateAiActivity('idle'), resetDelay)
     },
     [
+      aiStatus?.configured,
       appendMessage,
       attachments,
       executeGeneration,
       flashUpdatedFields,
       isGeneratingRef,
       resetGeneratedOutput,
+      runLiveAiTurn,
       syncSnapshot,
       updateAiActivity,
     ]
@@ -305,7 +684,11 @@ export function useQuestionsFactory() {
 
       generatedQuestionsRef.current = snapshot.generatedQuestions
       generatedTargetRef.current = snapshot.generatedTarget
-      restoreGeneratedOutput(snapshot.generatedQuestions, snapshot.generatedTarget)
+      restoreGeneratedOutput(
+        snapshot.generatedQuestions,
+        snapshot.generatedTarget,
+        Boolean(snapshot.draft?.generated)
+      )
 
       closeHistory()
     },
@@ -318,6 +701,12 @@ export function useQuestionsFactory() {
     setAttachments([])
     closeHistory()
   }, [closeHistory, resetSession, stopSimulation])
+
+  useAppMenuAction((action) => {
+    if (action === 'new-questions-studio' && !isGeneratingRef.current) {
+      startNewConversation()
+    }
+  })
 
   const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -366,6 +755,14 @@ export function useQuestionsFactory() {
     draft,
     highlightedFields,
     isGenerating,
+    generationOverlayPhase: overlayPhase,
+    generationProcessStatus: processStatus,
+    isOutputRevealed,
+    isRetryPromptVisible,
+    retryImpulseSeq,
+    retryGeneration,
+    cancelGenerationRetry,
+    completeOrbReturn,
     generatedQuestions,
     isSimulating,
     liked,
@@ -383,6 +780,29 @@ export function useQuestionsFactory() {
     resumeConversation,
     startNewConversation,
     handleSubmit,
+    retryFailedMessage: async (messageId: string) => {
+      if (aiActivityRef.current === 'thinking' || isGeneratingRef.current) return
+      const currentMessages = messagesRef.current
+      const idx = currentMessages.findIndex((m) => m.id === messageId)
+      if (idx <= 0) return
+
+      let userPrompt = ''
+      let historyEndIdx = idx
+      for (let i = idx - 1; i >= 0; i--) {
+        if (currentMessages[i].from === 'user') {
+          userPrompt = currentMessages[i].content
+          historyEndIdx = i + 1
+          break
+        }
+      }
+      if (!userPrompt.trim()) return
+
+      const failedMsg = currentMessages[idx]
+      await runLiveAiTurn(userPrompt, currentMessages.slice(0, historyEndIdx), draftRef.current, {
+        retryMessageId: messageId,
+        baseRetryCount: failedMsg.retryCount ?? 1,
+      })
+    },
     handleFileChange,
     removeAttachment,
     handleToggleLike,
@@ -391,6 +811,20 @@ export function useQuestionsFactory() {
     openWorkspace,
     runSimulation,
     stopSimulation: handleStopSimulation,
-    stopAiActivity: () => updateAiActivity('idle'),
+    stopAiActivity: () => {
+      if (activeAiRunIdRef.current) {
+        void aiClient.abortRun(activeAiRunIdRef.current)
+        activeAiRunIdRef.current = null
+      }
+      updateAiActivity('idle')
+    },
+    aiStatus,
+    availableModels,
+    isModelsLoading,
+    activeProvider,
+    activeModelId,
+    switchModel,
+    isSwitchingModel: saveAiConfigMutation.isPending,
+    openAiSettings: () => setActiveNav('settings'),
   }
 }

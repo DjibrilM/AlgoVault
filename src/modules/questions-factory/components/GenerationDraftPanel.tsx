@@ -12,6 +12,7 @@ interface GenerationDraftPanelProps {
   draft: GenerationDraft | null
   highlightedFields: DraftFieldKey[]
   isGenerating: boolean
+  isOutputRevealed: boolean
   generatedQuestions: GeneratedQuestionItem[]
   onOpenWorkspace: () => void
 }
@@ -22,23 +23,23 @@ interface DraftRowConfig {
   value: string | null
 }
 
+const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const
+
 export function GenerationDraftPanel({
   draft,
   highlightedFields,
   isGenerating,
+  isOutputRevealed,
   generatedQuestions,
   onOpenWorkspace,
 }: GenerationDraftPanelProps) {
-  const [isOverviewOpen, setIsOverviewOpen] = useState(true)
+  const isRevealed = Boolean(draft?.generated && isOutputRevealed)
+  const [isOverviewOpen, setIsOverviewOpen] = useState(!isRevealed)
 
-  // Collapse the overview into a tidy accordion once everything is generated
+  // Collapse the overview into a tidy accordion once generated output is revealed
   useEffect(() => {
-    if (draft?.generated) {
-      setIsOverviewOpen(false)
-    } else {
-      setIsOverviewOpen(true)
-    }
-  }, [draft?.generated])
+    setIsOverviewOpen(!isRevealed)
+  }, [isRevealed])
 
   const rows: DraftRowConfig[] = draft
     ? [
@@ -115,12 +116,12 @@ export function GenerationDraftPanel({
             {/* Header */}
             <div className="px-5 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
               <span className="text-xs font-medium text-[#E5E5E5]">
-                {draft.generated ? 'Generated Output' : 'Generation Draft'}
+                {isRevealed ? 'Generated Output' : 'Generation Draft'}
               </span>
               <span className="text-[11px] text-[#737373]">
                 {isGenerating
                   ? 'Generating...'
-                  : draft.generated
+                  : isRevealed
                     ? 'Generated'
                     : draft.readyToGenerate
                       ? 'Awaiting confirmation'
@@ -129,104 +130,126 @@ export function GenerationDraftPanel({
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-              {!draft.generated ? (
-                renderOverviewRows()
-              ) : (
-                <>
-                  {/* Collapsible Overview Accordion */}
-                  <div className="rounded-xl bg-white/[0.02] px-3.5 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsOverviewOpen((prev) => !prev)}
-                      className="w-full flex items-center justify-between gap-2 py-1 text-left cursor-pointer group"
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <AnimatePresence mode="wait" initial={false}>
+                {!isRevealed ? (
+                  <motion.div
+                    key="draft-overview-rows"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.16, ease: EASE_OUT_EXPO }}
+                  >
+                    {renderOverviewRows()}
+                  </motion.div>
+                ) : (
+                  <motion.div key="generated-output-content" className="space-y-6">
+                    {/* Collapsible Overview Accordion */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.36, delay: 0.04, ease: EASE_OUT_EXPO }}
+                      className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs font-medium text-[#E5E5E5]">
-                          Overview
-                        </span>
-                        <span className="text-[11px] text-[#737373] truncate">
-                          {draft.topic} · {generatedQuestions.length} items
-                        </span>
-                      </div>
-                      <motion.span
-                        animate={{ rotate: isOverviewOpen ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-[#737373] group-hover:text-white shrink-0"
+                      <button
+                        type="button"
+                        onClick={() => setIsOverviewOpen((prev) => !prev)}
+                        className="w-full flex items-center justify-between gap-2 py-1 text-left cursor-pointer group"
                       >
-                        <ChevronDown className="size-3.5" />
-                      </motion.span>
-                    </button>
-
-                    <AnimatePresence initial={false}>
-                      {isOverviewOpen && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                          className="overflow-hidden"
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-medium text-[#E5E5E5]">
+                            Overview
+                          </span>
+                          <span className="text-[11px] text-[#737373] truncate">
+                            {draft.topic} · {generatedQuestions.length} items
+                          </span>
+                        </div>
+                        <motion.span
+                          animate={{ rotate: isOverviewOpen ? 180 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-[#737373] group-hover:text-white shrink-0"
                         >
-                          <div className="pt-4 pb-2">
-                            {renderOverviewRows()}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                          <ChevronDown className="size-3.5" />
+                        </motion.span>
+                      </button>
 
-                  {/* Animated List of All Generated Questions */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-[#A3A3A3]">
-                        Generated Questions
-                      </span>
-                      <span className="text-[11px] tabular-nums text-[#737373]">
-                        {generatedQuestions.length}
-                      </span>
-                    </div>
+                      <AnimatePresence initial={false}>
+                        {isOverviewOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.24, ease: EASE_OUT_EXPO }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-4 pb-2">{renderOverviewRows()}</div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
 
-                    <div className="space-y-2.5">
-                      {generatedQuestions.map((q, idx) => (
-                        <motion.div
-                          key={q.id}
-                          initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{
-                            duration: 0.34,
-                            delay: idx * 0.08,
-                            ease: [0.22, 1, 0.36, 1],
-                          }}
-                          className="rounded-xl bg-white/[0.03] px-3.5 py-3 space-y-1.5"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-xs font-medium text-[#E5E5E5] leading-snug">
-                              <span className="text-[#666666] mr-2 tabular-nums">
-                                {String(q.index).padStart(2, '0')}
+                    {/* Animated List of All Generated Questions */}
+                    <div className="space-y-3">
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.28, delay: 0.12, ease: EASE_OUT_EXPO }}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="text-xs font-medium text-[#A3A3A3]">
+                          Generated Questions
+                        </span>
+                        <span className="text-[11px] tabular-nums text-[#737373]">
+                          {generatedQuestions.length}
+                        </span>
+                      </motion.div>
+
+                      <div className="space-y-2.5">
+                        {generatedQuestions.map((q, idx) => (
+                          <motion.div
+                            key={q.id}
+                            initial={{ opacity: 0, y: 14, scale: 0.975 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{
+                              duration: 0.34,
+                              delay: 0.18 + idx * 0.08,
+                              ease: EASE_OUT_EXPO,
+                            }}
+                            className="rounded-xl bg-white/[0.03] px-3.5 py-3 space-y-1.5"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-xs font-medium text-[#E5E5E5] leading-snug">
+                                <span className="text-[#666666] mr-2 tabular-nums">
+                                  {String(q.index).padStart(2, '0')}
+                                </span>
+                                {q.title}
                               </span>
-                              {q.title}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-[11px] text-[#737373] pl-6">
-                            <span>{q.style}</span>
-                            <span>{q.difficulty}</span>
-                          </div>
-                        </motion.div>
-                      ))}
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-[#737373] pl-6">
+                              <span>{q.style}</span>
+                              <span>{q.difficulty}</span>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* White Action Button (only after generation is complete) */}
+            {/* White Action Button (only after generated output is revealed) */}
             <AnimatePresence>
-              {draft.generated && (
+              {isRevealed && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{
+                    duration: 0.28,
+                    delay: 0.2 + generatedQuestions.length * 0.08,
+                    ease: EASE_OUT_EXPO,
+                  }}
                   className="p-4 border-t border-white/[0.06]"
                 >
                   <button

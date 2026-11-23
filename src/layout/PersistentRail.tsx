@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Bookmark } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getAvatarById } from '@/shared/data/avatars'
+import { useProfileQuery } from '@/shared/hooks/useWorkspaceQueries'
 import {
   Home as HomeSolid,
   Settings as SettingsSolid,
@@ -19,6 +21,8 @@ interface PersistentRailProps {
 }
 
 export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) {
+  const { data: profile } = useProfileQuery()
+  const avatar = getAvatarById(profile?.avatarId)
   const navItems = [
     {
       id: 'home' as NavSection,
@@ -29,7 +33,7 @@ export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) 
     },
     {
       id: 'settings' as NavSection,
-      label: 'Settings',
+      label: 'API Keys',
       SolidIcon: SettingsSolid,
       LinearIcon: SettingsLinear,
       activeColorClass: 'text-[#F43F5E]',
@@ -157,11 +161,26 @@ export function PersistentRail({ activeNav, onNavChange }: PersistentRailProps) 
       {/* Bottom Status / Profile Avatar Indicator */}
       <div className="flex flex-col items-center w-full px-2">
         <button
-          className="relative h-9 w-9 rounded-full bg-[#202020] border border-[#333333] flex items-center justify-center text-white/90 font-semibold text-xs shadow-md hover:border-white/30 transition-all cursor-pointer"
-          title="Profile & Workspace Status"
+          type="button"
+          onClick={() => onNavChange('profile')}
+          className={cn(
+            'relative h-9 w-9 rounded-full bg-[#202020] overflow-hidden flex items-center justify-center text-white/90 font-semibold text-xs shadow-md transition-all cursor-pointer',
+            activeNav === 'profile'
+              ? 'ring-2 ring-white ring-offset-2 ring-offset-[#141414]'
+              : 'border border-[#333333] hover:border-white/40'
+          )}
+          title={profile ? `${profile.displayName} · Profile` : 'Profile'}
+          aria-label="Open profile"
         >
-          <span>AV</span>
-          <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-[#141414]" />
+          {avatar ? (
+            <img
+              src={avatar.src}
+              alt={profile?.displayName ?? avatar.label}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span>AV</span>
+          )}
         </button>
       </div>
     </aside>

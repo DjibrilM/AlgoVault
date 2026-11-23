@@ -94,6 +94,40 @@ export interface FavoriteRecordDto {
   updatedAt: string
 }
 
+export type TodoImportance = 'low' | 'medium' | 'high' | 'critical'
+
+export interface CreateTodoInput {
+  title: string
+  notes?: string | null
+  importance?: TodoImportance
+  deadline?: string | null
+  challengeId?: number | null
+}
+
+export interface TodoRecordDto {
+  id: number
+  title: string
+  notes: string | null
+  importance: TodoImportance
+  deadline: string | null
+  challengeId: number | null
+  completed: boolean
+  challenge?: {
+    id: number
+    slug: string
+    title: string
+    difficulty: Difficulty
+    solved: boolean
+    tags: string[]
+    category?: {
+      id: number
+      title: string
+    } | null
+  } | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface MarathonStep {
   step: number
   problemId: number
@@ -144,6 +178,23 @@ export interface FactoryConversationRecordDto {
   generatedTarget: Record<string, unknown> | null
   createdAt: string
   updatedAt: string
+}
+
+export interface UserProfileDto {
+  id: number
+  displayName: string
+  username: string
+  bio: string
+  avatarId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SaveUserProfileInput {
+  displayName: string
+  username?: string
+  bio?: string
+  avatarId: string
 }
 
 export interface PaginatedFactoryConversationsDto {

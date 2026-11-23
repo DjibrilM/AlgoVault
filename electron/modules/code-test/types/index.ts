@@ -47,6 +47,22 @@ export const CODE_TEST_CHANNELS = {
   GET_FACTORY_CONVERSATIONS: 'db:get-factory-conversations',
   /** Save or update a Questions Factory conversation snapshot in SQLite */
   SAVE_FACTORY_CONVERSATION: 'db:save-factory-conversation',
+  /** List persistent to-do items from SQLite */
+  GET_TODOS: 'db:get-todos',
+  /** Create a new to-do item in SQLite */
+  CREATE_TODO: 'db:create-todo',
+  /** Toggle completed status on a to-do item */
+  TOGGLE_TODO: 'db:toggle-todo',
+  /** Toggle a challenge in/out of the practice to-do queue */
+  TOGGLE_CHALLENGE_TODO: 'db:toggle-challenge-todo',
+  /** Delete a to-do item from SQLite */
+  DELETE_TODO: 'db:delete-todo',
+  /** Delete all completed to-do items from SQLite */
+  CLEAR_COMPLETED_TODOS: 'db:clear-completed-todos',
+  /** Get the local user profile from SQLite */
+  GET_PROFILE: 'db:get-profile',
+  /** Create or update the local user profile in SQLite */
+  SAVE_PROFILE: 'db:save-profile',
 } as const
 
 export type CodeTestChannel = (typeof CODE_TEST_CHANNELS)[keyof typeof CODE_TEST_CHANNELS]
@@ -85,6 +101,13 @@ export interface SaveFactoryConversationDto {
   draft: Record<string, unknown> | null
   generatedQuestions: Array<Record<string, unknown>>
   generatedTarget: Record<string, unknown> | null
+}
+
+export interface SaveUserProfileDto {
+  displayName: string
+  username?: string
+  bio?: string
+  avatarId: string
 }
 
 export interface PaginatedFactoryConversationsDto {
@@ -157,6 +180,36 @@ export interface ICodeTestService {
 
   /** Saves or updates a Questions Factory conversation snapshot */
   saveFactoryConversation(dto: SaveFactoryConversationDto): Promise<unknown>
+
+  /** Lists persistent to-do items */
+  getTodos(): Promise<unknown[]>
+
+  /** Creates a new to-do item */
+  createTodo(dto: {
+    title: string
+    notes?: string | null
+    importance?: 'low' | 'medium' | 'high' | 'critical'
+    deadline?: string | null
+    challengeId?: number | null
+  }): Promise<unknown>
+
+  /** Toggles completion status for a to-do item */
+  toggleTodo(id: number): Promise<unknown>
+
+  /** Toggles a challenge in or out of the practice to-do queue */
+  toggleChallengeTodo(challengeId: number): Promise<{ queued: boolean; todo?: unknown }>
+
+  /** Deletes a to-do item */
+  deleteTodo(id: number): Promise<{ deleted: boolean }>
+
+  /** Clears all completed to-do items */
+  clearCompletedTodos(): Promise<{ cleared: number }>
+
+  /** Reads the local user profile if created */
+  getProfile(): Promise<unknown | null>
+
+  /** Saves or updates the local user profile */
+  saveProfile(dto: SaveUserProfileDto): Promise<unknown>
 }
 
 /**

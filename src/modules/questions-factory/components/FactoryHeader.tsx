@@ -1,29 +1,22 @@
-import { ArrowLeft, History, Play, Square } from 'lucide-react'
-import type { AIAmplitude, AIState } from '@/components/ui/smoothui/ai-core'
-import AIOrbFace from '@/components/ui/smoothui/ai-orb-face'
+import { type RefObject } from 'react'
+import { ArrowLeft, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface FactoryHeaderProps {
-  orbState: AIState
-  amplitude: AIAmplitude
-  isSimulating: boolean
+  orbSlotRef: RefObject<HTMLDivElement>
   isHistoryOpen: boolean
   onBackToHome: () => void
-  onToggleSimulation: () => void
   onToggleHistory: () => void
 }
 
 /**
- * Top sub-header displaying back navigation, synchronized AI orb state,
- * pipeline simulation control, and the conversation history drawer trigger.
+ * Top sub-header displaying back navigation, the anchored AI orb slot,
+ * and history drawer trigger.
  */
 export function FactoryHeader({
-  orbState,
-  amplitude,
-  isSimulating,
+  orbSlotRef,
   isHistoryOpen,
   onBackToHome,
-  onToggleSimulation,
   onToggleHistory,
 }: FactoryHeaderProps) {
   return (
@@ -39,35 +32,13 @@ export function FactoryHeader({
         </button>
         <span className="h-4 w-px bg-white/10" />
         <div className="flex items-center gap-2.5">
-          <AIOrbFace
-            amplitude={amplitude}
-            aria-label={`Questions Factory is ${orbState}`}
-            size={28}
-            state={orbState}
-          />
+          {/* Reserves the corner slot where the single persistent AIOrbFace docks at rest */}
+          <div ref={orbSlotRef} aria-hidden className="w-7 h-7 shrink-0" />
           <span className="text-xs font-semibold text-white">Questions Factory</span>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onToggleSimulation}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.08] px-2.5 py-1 text-[11px] font-medium text-[#D4D4D4] hover:text-white transition-colors cursor-pointer"
-        >
-          {isSimulating ? (
-            <>
-              <Square className="size-3 fill-current text-[#F43F5E]" />
-              <span>Stop Simulation</span>
-            </>
-          ) : (
-            <>
-              <Play className="size-3 fill-current text-[#A855F7]" />
-              <span>Simulate Pipeline</span>
-            </>
-          )}
-        </button>
-
         <button
           type="button"
           onClick={onToggleHistory}

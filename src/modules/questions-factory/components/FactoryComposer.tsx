@@ -1,12 +1,23 @@
-import type { ChangeEvent, RefObject } from 'react'
+import { type ChangeEvent, type RefObject } from 'react'
 import type { AIState } from '@/components/ui/smoothui/ai-core'
 import AIPromptInput, { type AIPromptAttachment } from '@/components/ui/smoothui/ai-prompt-input'
+import type { AiModelOptionDto, AiProviderId } from '@/shared/types/ai'
+import { ModelSelectorMenu } from './ModelSelectorMenu'
 
 interface FactoryComposerProps {
   value: string
   state: AIState
   attachments: AIPromptAttachment[]
   fileInputRef: RefObject<HTMLInputElement>
+  availableModels?: AiModelOptionDto[]
+  activeProvider?: AiProviderId
+  activeModelId?: string
+  activeBaseUrl?: string
+  isAiConfigured?: boolean
+  isModelsLoading?: boolean
+  isSwitchingModel?: boolean
+  onSelectModel?: (modelId: string, provider: AiProviderId) => void
+  onOpenSettings?: () => void
   onValueChange: (value: string) => void
   onSubmit: (value: string) => void
   onStop: () => void
@@ -16,13 +27,20 @@ interface FactoryComposerProps {
 
 /**
  * Floating prompt composer docked at the bottom of the conversation pane,
- * paired with a hidden file picker input for user attachments.
+ * paired with a hidden file picker input and anchored model selector menu.
  */
 export function FactoryComposer({
   value,
   state,
   attachments,
   fileInputRef,
+  availableModels = [],
+  activeProvider = 'google',
+  activeModelId = '',
+  isModelsLoading = false,
+  isSwitchingModel = false,
+  onSelectModel,
+  onOpenSettings,
   onValueChange,
   onSubmit,
   onStop,
@@ -39,22 +57,45 @@ export function FactoryComposer({
         onChange={onFileChange}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#1A1A1A] via-[#1A1A1A]/85 to-transparent px-6 pt-8 pb-5">
-        <div className="pointer-events-auto max-w-3xl mx-auto">
-          <AIPromptInput
-            aria-label="Questions Factory prompt"
-            attachments={attachments}
-            className="rounded-2xl border-white/[0.08] bg-[#1E1E1E] shadow-2xl"
-            maxLength={2000}
-            onAttach={() => fileInputRef.current?.click()}
-            onRemoveAttachment={onRemoveAttachment}
-            onStop={onStop}
-            onSubmit={onSubmit}
-            onValueChange={onValueChange}
-            placeholder="Ask anything…"
-            state={state}
-            value={value}
-          />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col">
+        <div
+          aria-hidden
+          className="h-12 w-full"
+          style={{
+            background:
+              'linear-gradient(to top, #1A1A1A 0%, rgba(26, 26, 26, 0.9) 45%, rgba(26, 26, 26, 0) 100%)',
+          }}
+        />
+        <div className="pointer-events-auto bg-[#1A1A1A] px-6 pb-5 pt-0.5">
+          <div className="max-w-3xl mx-auto">
+            <AIPromptInput
+              aria-label="Questions Factory prompt"
+              attachments={attachments}
+              maxLength={2000}
+              onAttach={() => fileInputRef.current?.click()}
+              onRemoveAttachment={onRemoveAttachment}
+              onStop={onStop}
+              onSubmit={onSubmit}
+              onValueChange={onValueChange}
+              placeholder="Ask anything…"
+              state={state}
+              value={value}
+            >
+              {onSelectModel && (
+                <ModelSelectorMenu
+                  availableModels={availableModels}
+                  activeProvider={activeProvider}
+                  activeModelId={activeModelId}
+                  isLoading={isModelsLoading}
+                  disabled={
+                    isSwitchingModel || state === 'thinking' || state === 'streaming'
+                  }
+                  onSelectModel={onSelectModel}
+                  onOpenSettings={onOpenSettings}
+                />
+              )}
+            </AIPromptInput>
+          </div>
         </div>
       </div>
     </>

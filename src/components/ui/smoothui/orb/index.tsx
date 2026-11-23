@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import type { MotionValue } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -58,9 +59,9 @@ export interface OrbProps {
   /** Fresnel-driven hue rotation — thin-film sheen. */
   iridescence?: number;
   /** Light direction, x. */
-  lightX?: number;
+  lightX?: number | MotionValue<number>;
   /** Light direction, y. */
-  lightY?: number;
+  lightY?: number | MotionValue<number>;
   /** Freeze on the current frame. */
   paused?: boolean;
   /** Bends the noise lookup by the surface normal. */
@@ -77,6 +78,10 @@ export interface OrbProps {
   softness?: number;
   /** Specular highlight strength. */
   specular?: number;
+  /** Flow playback speed multiplier (`1` = `duration`). */
+  speed?: number;
+  /** Live energy (0–1, or MotionValue) driving flow, turbulence and wobble smoothly at 60fps. */
+  amplitude?: number | MotionValue<number>;
   /** Strength of the second, nested warp — marbling rather than blobs. */
   turbulence?: number;
   /** Silhouette deformation, so the orb is a drop rather than a ball. */
@@ -86,6 +91,7 @@ export interface OrbProps {
 /** The editor's own defaults, which are a good orb rather than a neutral one. */
 const DEFAULTS = {
   aberration: 0.8,
+  amplitude: 0 as number | MotionValue<number>,
   balance: 0.5,
   blobScale: 3,
   chroma: 1,
@@ -94,23 +100,24 @@ const DEFAULTS = {
   duration: 7,
   flow: 0.6,
   glow: 0,
-  grain: 0.6,
+  grain: 0.18,
   inner: 0.38,
   iridescence: 0,
-  lightX: -0.6,
-  lightY: -1,
+  lightX: -0.6 as number | MotionValue<number>,
+  lightY: -1 as number | MotionValue<number>,
   refraction: 0.25,
   rim: 1.3,
   shading: 0.05,
   shift: 0.23,
-  softness: 0.005,
+  softness: 0.002,
   specular: 0.2,
+  speed: 1,
   turbulence: 0.4,
   wobble: 0,
 } as const;
 
 const MAX_STOPS = 4;
-const MAX_DPR = 2;
+const MAX_DPR = 3;
 const RGB_MAX = 255;
 const SRGB_KNEE = 0.040_45;
 const TAU = Math.PI * 2;
@@ -245,7 +252,8 @@ vec3 linearToSrgb(vec3 c) {
 }
 
 void main() {
-  vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / min(uRes.x, uRes.y);
+  vec2 safeRes = max(uRes, vec2(1.0));
+  vec2 uv = (gl_FragCoord.xy * 2.0 - safeRes) / min(safeRes.x, safeRes.y);
   uv /= RAD;
 
   /* Silhouette wobble. Integer harmonics of the angle keep it continuous all
@@ -262,6 +270,22 @@ void main() {
   }
 
   float r = length(uv);
+
+  // Keep a crisp ~1 device-px feather so the orb silhouette stays razor-sharp at every size.
+  float w = max(uSoft, 1.0 * fwidth(r));
+  float body = 1.0 - smoothstep(1.0 - w, 1.0, r);
+
+  /* The halo has to reach exactly zero before the canvas boundary. Left alone
+     it is still ~1.5/255 at the edge and gets cut off square, which shows the
+     canvas box as a faint rectangle around the orb. */
+  float glowF = uGlow > 0.0001 ? uGlow * exp(-max(r - 1.0, 0.0) * 20.0) : 0.0;
+  glowF *= 1.0 - smoothstep(0.45, 1.0, (r - 1.0) / (RMAX - 1.0));
+  float alpha = clamp(body + glowF * (1.0 - body), 0.0, 1.0);
+  if (!(alpha > 0.001)) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
   vec2 pd = uv / max(r, 1.0);
   float z = sqrt(max(1.0 - dot(pd, pd), 0.0));
   vec3 n = vec3(pd, z);
@@ -274,7 +298,7 @@ void main() {
   vec2 p2 = p1 + uTurb * flowField(p1 * 1.7 + 5.2);
   float t = mix(0.5, fbm(p2 + 3.7), 1.35) + uShift;
 
-  float fres3 = pow(1.0 - n.z, 3.0);
+  float fres3 = pow(max(1.0 - n.z, 1e-4), 3.0);
   vec3 lab = iridesce(paletteLab(t), fres3);
 
   vec3 base;
@@ -299,23 +323,11 @@ void main() {
   col += uInner * exp(-dot(op, op) * 2.2) * base;
 
   vec3 half_ = normalize(L + vec3(0.0, 0.0, 1.0));
-  col += pow(1.0 - n.z, 8.0) * uRim
-       + pow(max(dot(n, half_), 0.0), 24.3) * uSpec;
+  col += pow(max(1.0 - n.z, 1e-4), 8.0) * uRim
+       + pow(max(dot(n, half_), 1e-4), 24.3) * uSpec;
 
   vec3 lit = linearToSrgb(col);
   vec3 flat_ = linearToSrgb(base);
-
-  // Never thinner than ~1.5 device px, so the rim stays smooth when the
-  // character is rendered small.
-  float w = max(uSoft, 1.5 * fwidth(r));
-  float body = 1.0 - smoothstep(1.0 - w, 1.0, r);
-
-  /* The halo has to reach exactly zero before the canvas boundary. Left alone
-     it is still ~1.5/255 at the edge and gets cut off square, which shows the
-     canvas box as a faint rectangle around the orb. */
-  float glowF = uGlow * exp(-max(r - 1.0, 0.0) * 20.0);
-  glowF *= 1.0 - smoothstep(0.45, 1.0, (r - 1.0) / (RMAX - 1.0));
-  float alpha = clamp(body + glowF * (1.0 - body), 0.0, 1.0);
 
   vec3 outCol = mix(flat_, lit, body);
 
@@ -329,6 +341,14 @@ void main() {
   fragColor = vec4(outCol * alpha, alpha);   // premultiplied
 }`;
 
+const OKLAB_CACHE = new Map<string, [number, number, number]>();
+
+const isMotionScalar = (value: unknown): value is MotionValue<number> =>
+  typeof value === "object" && value !== null && "get" in value;
+
+const readScalar = (value: number | MotionValue<number>): number =>
+  isMotionScalar(value) ? value.get() : value;
+
 /**
  * Any CSS colour to OkLab, in two steps because neither alone is enough.
  *
@@ -338,7 +358,36 @@ void main() {
  * whatever syntax survives into actual pixels, which is the only step that
  * cannot lie about the result.
  */
+const OKLCH_RE =
+  /^oklch\(\s*([\d.]+%?)\s+([\d.]+%?)\s+([-+]?[\d.]+)(deg|rad|grad|turn)?\s*(?:\/[^)]*)?\)$/i;
+
 const cssToOklab = (input: string): [number, number, number] => {
+  const cached = OKLAB_CACHE.get(input);
+  if (cached) {
+    return cached;
+  }
+
+  const oklchMatch = OKLCH_RE.exec(input.trim());
+  if (oklchMatch) {
+    const rawL = oklchMatch[1];
+    const rawC = oklchMatch[2];
+    const rawH = Number.parseFloat(oklchMatch[3]);
+    const unit = (oklchMatch[4] ?? "deg").toLowerCase();
+    const l = rawL.endsWith("%") ? Number.parseFloat(rawL) / 100 : Number.parseFloat(rawL);
+    const c = rawC.endsWith("%") ? Number.parseFloat(rawC) * 0.004 : Number.parseFloat(rawC);
+    const hueRad =
+      unit === "rad"
+        ? rawH
+        : unit === "turn"
+          ? rawH * TAU
+          : unit === "grad"
+            ? rawH * (Math.PI / 200)
+            : rawH * (Math.PI / 180);
+    const direct: [number, number, number] = [l, c * Math.cos(hueRad), c * Math.sin(hueRad)];
+    OKLAB_CACHE.set(input, direct);
+    return direct;
+  }
+
   const probe = document.createElement("span");
   probe.style.color = input;
   document.body.appendChild(probe);
@@ -364,11 +413,13 @@ const cssToOklab = (input: string): [number, number, number] => {
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
   const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
+  const result: [number, number, number] = [
     0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
     1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
     0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
   ];
+  OKLAB_CACHE.set(input, result);
+  return result;
   // biome-ignore-end lint/style/useNumericSeparators: published colour-space constants
 };
 
@@ -468,30 +519,67 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
       soft: at("uSoft"),
       spec: at("uSpec"),
       turb: at("uTurb"),
+      wobble: at("uWobble"),
+    };
+
+    const targetLab = new Float32Array(MAX_STOPS * 3);
+    const curLab = new Float32Array(MAX_STOPS * 3);
+    const cur = {
+      flow: config.current.flow,
+      glow: config.current.glow,
+      lightX: readScalar(config.current.lightX),
+      lightY: readScalar(config.current.lightY),
+      rim: config.current.rim,
+      spec: config.current.specular,
+      speed: config.current.speed,
+      turb: config.current.turbulence,
+      wobble: config.current.wobble,
+    };
+    let hasInitializedDynamic = false;
+
+    const uploadDynamic = () => {
+      gl.uniform3fv(u.lab, curLab);
+      gl.uniform1f(u.flow, cur.flow);
+      gl.uniform1f(u.turb, cur.turb);
+      gl.uniform1f(u.rim, cur.rim);
+      gl.uniform1f(u.spec, cur.spec);
+      gl.uniform1f(u.wobble, cur.wobble);
+      gl.uniform1f(u.glow, cur.glow);
+      gl.uniform3f(u.light, cur.lightX, cur.lightY, LIGHT_Z);
+    };
+
+    const snapDynamic = () => {
+      const c = config.current;
+      const amp = Math.max(0, Math.min(1, readScalar(c.amplitude)));
+      curLab.set(targetLab);
+      cur.flow = c.flow + amp * 0.42;
+      cur.turb = c.turbulence + amp * 0.36;
+      cur.wobble = c.wobble + amp * 0.08;
+      cur.rim = c.rim;
+      cur.spec = c.specular;
+      cur.glow = c.glow;
+      cur.speed = c.speed;
+      cur.lightX = readScalar(c.lightX);
+      cur.lightY = readScalar(c.lightY);
+      uploadDynamic();
     };
 
     const pushConfig = () => {
       const c = config.current;
       const stops = c.colors.slice(0, MAX_STOPS);
-      const lab = new Float32Array(MAX_STOPS * 3);
       for (let i = 0; i < MAX_STOPS; i++) {
         const [x, y, z] = cssToOklab(stops[Math.min(i, stops.length - 1)]);
-        lab[i * 3] = x;
-        lab[i * 3 + 1] = y;
-        lab[i * 3 + 2] = z;
+        targetLab[i * 3] = x;
+        targetLab[i * 3 + 1] = y;
+        targetLab[i * 3 + 2] = z;
       }
-      gl.uniform3fv(u.lab, lab);
       gl.uniform1f(u.count, Math.max(2, Math.min(stops.length, MAX_STOPS)));
       // The prop reads as blob size, so invert it into cell frequency.
       gl.uniform1f(u.scaleN, 1.45 / Math.max(c.blobScale, 0.05));
-      gl.uniform1f(u.flow, c.flow);
-      gl.uniform1f(u.turb, c.turbulence);
       gl.uniform1f(u.shift, c.shift);
       gl.uniform1f(u.balance, BALANCE_BASE ** ((0.5 - c.balance) * 2));
       gl.uniform1f(u.chroma, c.chroma);
       gl.uniform1f(u.contrast, c.contrast);
-      gl.uniform1f(u.rim, c.rim);
-      gl.uniform1f(u.spec, c.specular);
       gl.uniform1f(u.inner, c.inner);
       gl.uniform1f(u.shading, c.shading);
       gl.uniform1f(u.refract, c.refraction);
@@ -499,34 +587,44 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
       gl.uniform1f(u.aberr, c.aberration);
       gl.uniform1f(u.grain, c.grain);
       gl.uniform1f(u.soft, c.softness);
-      gl.uniform1f(at("uWobble"), c.wobble);
-      gl.uniform1f(u.glow, c.glow);
-      gl.uniform3f(u.light, c.lightX, c.lightY, LIGHT_Z);
+
+      if (!hasInitializedDynamic) {
+        hasInitializedDynamic = true;
+        snapDynamic();
+      }
     };
 
     const resize = (entry?: ResizeObserverEntry) => {
+      // Guarantee at least 2x (and up to 3x) supersampling so small and medium orbs stay sharp.
+      const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 2), MAX_DPR);
+      // Prefer untransformed layout box (`clientWidth`/`clientHeight`) over `getBoundingClientRect`
+      // so CSS `scale(...)` containers never down-size the underlying WebGL buffer.
+      const layoutW = canvas.clientWidth;
+      const layoutH = canvas.clientHeight;
       const box = entry?.devicePixelContentBoxSize;
       let w: number;
       let h: number;
-      if (box?.length) {
-        w = box[0].inlineSize;
-        h = box[0].blockSize;
+      if (layoutW > 0 && layoutH > 0) {
+        w = Math.round(layoutW * dpr);
+        h = Math.round(layoutH * dpr);
+      } else if (box?.length) {
+        w = Math.max(box[0].inlineSize, 1);
+        h = Math.max(box[0].blockSize, 1);
       } else {
-        const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
         const rect = canvas.getBoundingClientRect();
         w = Math.round(rect.width * dpr);
         h = Math.round(rect.height * dpr);
       }
       w = Math.max(1, w);
       h = Math.max(1, h);
-      if (canvas.width === w && canvas.height === h) {
-        return false;
+      const changed = canvas.width !== w || canvas.height !== h;
+      if (changed) {
+        canvas.width = w;
+        canvas.height = h;
       }
-      canvas.width = w;
-      canvas.height = h;
       gl.viewport(0, 0, w, h);
       gl.uniform2f(u.res, w, h);
-      return true;
+      return changed;
     };
 
     const draw = () => {
@@ -553,9 +651,36 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
       if (pending < FRAME_CAP_MS - dt * 0.5) {
         return;
       }
-      phase = (phase + pending / 1000 / config.current.duration) % 1;
+      const stepMs = pending;
       pending = 0;
+      const dtSec = stepMs / 1000;
+      const alpha = 1 - Math.exp(-dtSec * 7.5);
+      const c = config.current;
+      const amp = Math.max(0, Math.min(1, readScalar(c.amplitude)));
+
+      const tFlow = c.flow + amp * 0.42;
+      const tTurb = c.turbulence + amp * 0.36;
+      const tWobble = c.wobble + amp * 0.08;
+      const tLightX = readScalar(c.lightX);
+      const tLightY = readScalar(c.lightY);
+
+      cur.flow += (tFlow - cur.flow) * alpha;
+      cur.turb += (tTurb - cur.turb) * alpha;
+      cur.wobble += (tWobble - cur.wobble) * alpha;
+      cur.rim += (c.rim - cur.rim) * alpha;
+      cur.spec += (c.specular - cur.spec) * alpha;
+      cur.glow += (c.glow - cur.glow) * alpha;
+      cur.speed += (c.speed - cur.speed) * alpha;
+      cur.lightX += (tLightX - cur.lightX) * alpha;
+      cur.lightY += (tLightY - cur.lightY) * alpha;
+
+      for (let i = 0; i < curLab.length; i++) {
+        curLab[i] += (targetLab[i] - curLab[i]) * alpha;
+      }
+
+      phase = (phase + (dtSec / Math.max(0.25, c.duration)) * cur.speed) % 1;
       gl.uniform1f(u.phase, phase * TAU);
+      uploadDynamic();
       draw();
     };
 
@@ -580,6 +705,7 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
     const applyMotionPreference = () => {
       if (reduce.matches || config.current.paused) {
         stop();
+        snapDynamic();
         if (reduce.matches) {
           gl.uniform1f(u.phase, 0);
         }
@@ -593,6 +719,7 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
       pushConfig();
       applyMotionPreference();
       if (!running) {
+        snapDynamic();
         draw();
       }
     };
@@ -674,9 +801,9 @@ export default function Orb({ className, size = 240, ...rest }: OrbProps) {
   return (
     <canvas
       aria-hidden="true"
-      className={cn("block", className)}
+      className={cn("block rounded-full", className)}
       ref={canvasRef}
-      style={{ height: dimension, width: dimension }}
+      style={{ background: "transparent", height: dimension, width: dimension }}
       tabIndex={-1}
     />
   );

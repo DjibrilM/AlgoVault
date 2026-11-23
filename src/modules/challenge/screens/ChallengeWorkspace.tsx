@@ -32,6 +32,8 @@ export function ChallengeWorkspace({
     isRunning,
     runResult,
     currentProblem,
+    solutionFeedback,
+    retrySolutionFeedback,
     handlePrevProblem,
     handleNextProblem,
     handleRunCode,
@@ -102,7 +104,11 @@ export function ChallengeWorkspace({
       >
         {/* Left Column: Problem Description & Editorial */}
         <ResizablePanel defaultSize="50%" minSize="25%">
-          <ProblemDescription problem={currentProblem} />
+          <ProblemDescription
+            problem={currentProblem}
+            currentCode={code}
+            selectedLang={selectedLang}
+          />
         </ResizablePanel>
 
         <ResizableHandle />
@@ -129,6 +135,8 @@ export function ChallengeWorkspace({
               <TestCaseRunner
                 problem={currentProblem}
                 runResult={runResult}
+                solutionFeedback={solutionFeedback}
+                onRequestFeedbackRetry={retrySolutionFeedback}
               />
             </ResizablePanel>
           </ResizablePanelGroup>
