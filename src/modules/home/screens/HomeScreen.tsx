@@ -1,6 +1,7 @@
 import { useAtomValue, useSetAtom } from 'jotai'
 import { HomeScreenProps } from '../types'
 import { AiGeneratorBar } from '../components/AiGeneratorBar'
+import { ContributeBanner } from '../components/ContributeBanner'
 import { MarathonCarousel } from '../components/MarathonCarousel'
 import { TopicCard } from '../components/TopicCard'
 import {
@@ -80,6 +81,8 @@ export function HomeScreen({
         </div>
 
         <AiGeneratorBar onOpenStudio={handleOpenStudio} />
+
+        <ContributeBanner />
       </div>
 
       <div className="max-w-5xl mx-auto w-full space-y-8">

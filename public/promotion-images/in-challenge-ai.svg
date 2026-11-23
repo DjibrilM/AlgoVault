@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="560" viewBox="0 0 1440 560" fill="none">
+  <defs>
+    <style>
+      .headline {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 900;
+        font-style: italic;
+        font-size: 56px;
+        letter-spacing: -1px;
+      }
+      .sub-text {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 800;
+        font-style: italic;
+        font-size: 32px;
+        letter-spacing: -0.5px;
+      }
+      .pill-text {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 800;
+        font-style: italic;
+        font-size: 30px;
+        letter-spacing: -0.4px;
+      }
+      .footer-text {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+        font-weight: 800;
+        font-style: italic;
+        font-size: 33px;
+        letter-spacing: -0.4px;
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(0, 10)">
+    <!-- Outer Black + Mint Border of Speech Bubble (Bottom-Center Tail) -->
+    <path
+      d="M 150 108
+         L 1192 108
+         C 1298 110, 1358 170, 1368 264
+         C 1378 358, 1326 426, 1192 432
+         L 786 432
+         L 720 526
+         L 658 432
+         L 150 432
+         C 66 432, 22 376, 28 278
+         C 34 180, 66 112, 150 108 Z"
+      fill="#00F5B8"
+      stroke="#0A0A0A"
+      stroke-width="16"
+      stroke-linejoin="round"
+    />
+
+    <!-- Inner White Speech Bubble (Bottom-Center Tail) -->
+    <path
+      d="M 160 126
+         L 1182 126
+         C 1278 128, 1328 180, 1338 264
+         C 1346 346, 1300 408, 1182 412
+         L 774 412
+         L 720 492
+         L 670 412
+         L 160 412
+         C 84 412, 48 362, 54 278
+         C 60 194, 84 130, 160 126 Z"
+      fill="#FFFFFF"
+      stroke="#0A0A0A"
+      stroke-width="10"
+      stroke-linejoin="round"
+    />
+
+    <!-- Bottom-Right Comic Accent Triangles -->
+    <g stroke="#0A0A0A" stroke-width="7" stroke-linejoin="round" fill="#00F5B8">
+      <polygon points="1312,402 1388,380 1396,420" />
+      <polygon points="1294,432 1370,440 1352,478" />
+      <polygon points="1264,442 1296,480 1252,490" />
+    </g>
+
+    <!-- Glowing Cartoon Lightbulb at Top-Right -->
+    <g transform="translate(1248, 56)">
+      <g fill="#FFD426" stroke="#0A0A0A" stroke-width="7" stroke-linejoin="round">
+        <polygon points="62,-44 78,-44 74,-14 64,-14" />
+        <polygon points="12,-28 26,-36 42,-10 30,-2" />
+        <polygon points="116,-32 130,-22 110,2 98,-8" />
+        <polygon points="-14,16 -8,2 22,14 16,28" />
+      </g>
+      <path
+        d="M 70 8
+           C 36 8, 14 34, 16 66
+           C 18 88, 34 102, 42 122
+           L 94 122
+           C 102 102, 120 88, 122 64
+           C 124 32, 102 8, 70 8 Z"
+        fill="#FFD426"
+        stroke="#0A0A0A"
+        stroke-width="8"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M 38 36 C 32 48, 32 62, 36 72"
+        stroke="#FFF7B2"
+        stroke-width="7"
+        stroke-linecap="round"
+        fill="none"
+      />
+      <path
+        d="M 56 118 L 54 84 C 54 74, 64 74, 68 84 C 72 74, 82 74, 82 84 L 80 118"
+        stroke="#0A0A0A"
+        stroke-width="5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"
+      />
+      <rect x="44" y="122" width="48" height="14" rx="5" fill="#B8C2CC" stroke="#0A0A0A" stroke-width="7" />
+      <rect x="46" y="136" width="44" height="13" rx="5" fill="#9AA5B1" stroke="#0A0A0A" stroke-width="7" />
+      <path d="M 54 149 L 82 149 L 74 160 L 62 160 Z" fill="#64748B" stroke="#0A0A0A" stroke-width="6" stroke-linejoin="round" />
+    </g>
+
+    <!-- Line 1: Headline -->
+    <text x="240" y="220" fill="#0A0A0A" class="headline">Ask Your</text>
+    <rect x="498" y="160" width="490" height="76" rx="38" fill="#00F5B8" />
+    <text x="743" y="218" text-anchor="middle" fill="#0A0A0A" class="headline">In-Challenge AI</text>
+
+    <!-- Line 2: Colored Pills -->
+    <text x="148" y="302" fill="#0A0A0A" class="sub-text">Get</text>
+
+    <rect x="218" y="262" width="174" height="52" rx="26" fill="#FFD426" />
+    <text x="305" y="298" text-anchor="middle" fill="#0A0A0A" class="pill-text">Intuition</text>
+    <text x="402" y="304" fill="#0A0A0A" class="sub-text">,</text>
+
+    <rect x="422" y="262" width="256" height="52" rx="26" fill="#19A8FF" />
+    <text x="550" y="298" text-anchor="middle" fill="#0A0A0A" class="pill-text">Walkthroughs</text>
+    <text x="688" y="304" fill="#0A0A0A" class="sub-text">,</text>
+
+    <rect x="708" y="262" width="128" height="52" rx="26" fill="#BA68FF" />
+    <text x="772" y="298" text-anchor="middle" fill="#0A0A0A" class="pill-text">Hints</text>
+
+    <text x="852" y="302" fill="#0A0A0A" class="sub-text">and</text>
+
+    <rect x="928" y="262" width="224" height="52" rx="26" fill="#0A4395" />
+    <text x="1040" y="298" text-anchor="middle" fill="#FFFFFF" class="pill-text">Edge Cases</text>
+
+    <!-- Line 3: Footer -->
+    <text x="676" y="370" text-anchor="middle" fill="#0A0A0A" class="footer-text">
+      whenever you need help learning the challenge.
+    </text>
+  </g>
+</svg>
